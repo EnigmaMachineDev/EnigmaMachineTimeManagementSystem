@@ -91,9 +91,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored) as AppData;
+        // Filter out old blocks that don't have the new array format
+        const validBlocks = (parsed.blocks || []).filter((b: any) => 
+          Array.isArray(b.homeSlots) && Array.isArray(b.workSlots) && Array.isArray(b.freeTimeSlots)
+        );
         setData({
           ...defaultData,
           ...parsed,
+          blocks: validBlocks,
           freeTimeCategories: parsed.freeTimeCategories?.length
             ? parsed.freeTimeCategories
             : DEFAULT_CATEGORIES,

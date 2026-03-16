@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -47,7 +48,7 @@ import {
   CheckSquare,
 } from "lucide-react";
 
-const REPEATING_ORDER: RepeatingType[] = ["weekly", "bimonthly", "monthly", "quarterly", "yearly"];
+const REPEATING_ORDER: RepeatingType[] = ["weekly", "biweekly", "bimonthly", "monthly", "quarterly", "yearly"];
 const CATEGORY_LABELS: Record<HomeTaskCategory, string> = {
   scheduled: "Scheduled Tasks",
   priority: "Priority Tasks",
@@ -78,6 +79,7 @@ type FormData = {
   scheduledDate: string;
   status: TaskStatus;
   blockedReason: string;
+  weekendOnly: boolean;
 };
 
 const emptyForm: FormData = {
@@ -88,6 +90,7 @@ const emptyForm: FormData = {
   scheduledDate: "",
   status: "incomplete",
   blockedReason: "",
+  weekendOnly: false,
 };
 
 export default function HomeTasksPage() {
@@ -115,6 +118,7 @@ export default function HomeTasksPage() {
       scheduledDate: task.scheduledDate || "",
       status: task.status,
       blockedReason: task.blockedReason || "",
+      weekendOnly: task.weekendOnly ?? false,
     });
     setDialogOpen(true);
   };
@@ -129,6 +133,7 @@ export default function HomeTasksPage() {
       scheduledDate: form.category === "scheduled" ? form.scheduledDate : undefined,
       status: form.status,
       blockedReason: form.status === "blocked" ? form.blockedReason : undefined,
+      weekendOnly: form.weekendOnly,
     };
     if (editingTask) {
       updateHomeTask({ ...taskData, id: editingTask.id });
@@ -339,6 +344,7 @@ export default function HomeTasksPage() {
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="weekly">Weekly</SelectItem>
+                    <SelectItem value="biweekly">Biweekly</SelectItem>
                     <SelectItem value="bimonthly">Bimonthly</SelectItem>
                     <SelectItem value="monthly">Monthly</SelectItem>
                     <SelectItem value="quarterly">Quarterly</SelectItem>
@@ -371,6 +377,16 @@ export default function HomeTasksPage() {
                 <Textarea value={form.blockedReason} onChange={(e) => setForm({ ...form, blockedReason: e.target.value })} />
               </div>
             )}
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="weekendOnly"
+                checked={form.weekendOnly}
+                onCheckedChange={(checked) => setForm({ ...form, weekendOnly: checked === true })}
+              />
+              <Label htmlFor="weekendOnly" className="text-sm font-normal cursor-pointer">
+                Weekend Only (higher priority on weekends, excluded on weekdays)
+              </Label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>Cancel</Button>
@@ -436,6 +452,11 @@ function TaskRow({
           <Badge variant="secondary" className={STATUS_COLORS[task.status]}>
             {task.status}
           </Badge>
+          {task.weekendOnly && (
+            <Badge variant="secondary" className="bg-purple-900/50 text-purple-300">
+              Weekend Only
+            </Badge>
+          )}
           {task.category === "scheduled" && task.scheduledDate && (
             <Badge variant="outline" className="text-xs">
               <CalendarDays className="h-3 w-3 mr-1" />

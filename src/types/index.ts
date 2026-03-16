@@ -1,6 +1,6 @@
 // ===== Home Tasks =====
 export type HomeTaskCategory = 'repeating' | 'priority' | 'scheduled' | 'freelance' | 'misc';
-export type RepeatingType = 'weekly' | 'bimonthly' | 'monthly' | 'quarterly' | 'yearly';
+export type RepeatingType = 'weekly' | 'biweekly' | 'bimonthly' | 'monthly' | 'quarterly' | 'yearly';
 export type TaskStatus = 'incomplete' | 'in-progress' | 'blocked' | 'complete';
 
 export interface HomeTask {
@@ -12,6 +12,7 @@ export interface HomeTask {
   scheduledDate?: string; // ISO date string
   status: TaskStatus;
   blockedReason?: string;
+  weekendOnly?: boolean;
 }
 
 // ===== Work Tasks =====
@@ -73,9 +74,9 @@ export interface BlockFreeTimeSlot {
 
 export interface TaskBlock {
   id: string;
-  homeSlot: BlockHomeSlot | null;
-  workSlot: BlockWorkSlot | null;
-  freeTimeSlot: BlockFreeTimeSlot | null;
+  homeSlots: (BlockHomeSlot | null)[];
+  workSlots: (BlockWorkSlot | null)[];
+  freeTimeSlots: (BlockFreeTimeSlot | null)[];
 }
 
 // ===== App State =====

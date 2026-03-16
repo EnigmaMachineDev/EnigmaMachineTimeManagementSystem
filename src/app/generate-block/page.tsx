@@ -45,9 +45,16 @@ import {
 } from "lucide-react";
 
 // Home task priority order for block generation
-const HOME_PRIORITY_ORDER: HomeTaskCategory[] = ["scheduled", "priority", "in-progress" as HomeTaskCategory, "repeating", "freelance", "misc"];
+const HOME_PRIORITY_ORDER: HomeTaskCategory[] = ["weekend-only" as HomeTaskCategory, "scheduled", "priority", "in-progress" as HomeTaskCategory, "repeating", "freelance", "misc"];
+
+// Helper to check if today is weekend (Saturday=6, Sunday=0)
+const isWeekend = () => {
+  const day = new Date().getDay();
+  return day === 0 || day === 6;
+};
 // Mapped display labels
 const PRIORITY_LABELS: Record<string, string> = {
+  "weekend-only": "Weekend Only",
   scheduled: "Scheduled",
   priority: "Priority",
   "in-progress": "In Progress",
@@ -74,6 +81,7 @@ export default function GenerateBlockPage() {
   const [blockedReasonDialog, setBlockedReasonDialog] = useState<{
     blockId: string;
     slotType: "home" | "work" | "freeTime";
+    slotIndex: number;
   } | null>(null);
   const [blockedReason, setBlockedReason] = useState("");
 
@@ -81,6 +89,7 @@ export default function GenerateBlockPage() {
   const [manualSelectDialog, setManualSelectDialog] = useState<{
     blockId: string;
     slotType: "home" | "work" | "freeTime";
+    slotIndex: number;
   } | null>(null);
   const [manualSelection, setManualSelection] = useState("");
   const [manualSubSelection, setManualSubSelection] = useState("");
@@ -90,6 +99,15 @@ export default function GenerateBlockPage() {
     (priorityIndex: number): HomeTask[] => {
       const category = HOME_PRIORITY_ORDER[priorityIndex];
       if (!category) return [];
+      const weekend = isWeekend();
+
+      if ((category as string) === "weekend-only") {
+        // Only return weekend-only tasks if it's actually the weekend
+        if (!weekend) return [];
+        return data.homeTasks.filter(
+          (t) => t.weekendOnly && t.status !== "complete" && t.status !== "blocked"
+        );
+      }
 
       if (category === "scheduled") {
         const today = new Date().toISOString().split("T")[0];
@@ -109,11 +127,12 @@ export default function GenerateBlockPage() {
       }
       if (category === "repeating") {
         return data.homeTasks.filter(
-          (t) => t.category === "repeating" && t.status !== "complete" && t.status !== "blocked"
+          (t) => t.category === "repeating" && t.status !== "complete" && t.status !== "blocked" && !t.weekendOnly
         );
       }
+      // For all other categories, exclude weekend-only tasks on weekdays
       return data.homeTasks.filter(
-        (t) => t.category === category && t.status !== "complete" && t.status !== "blocked"
+        (t) => t.category === category && t.status !== "complete" && t.status !== "blocked" && (weekend || !t.weekendOnly)
       );
     },
     [data.homeTasks]
@@ -175,51 +194,81 @@ export default function GenerateBlockPage() {
   // === Generate a new block ===
   const handleGenerateBlock = () => {
     if (data.blocks.length >= 3) return;
-    const usedHomeIds = new Set(data.blocks.map((b) => b.homeSlot?.taskId).filter(Boolean) as string[]);
-    const usedWorkIds = new Set(data.blocks.map((b) => b.workSlot?.workItemId).filter(Boolean) as string[]);
-    const usedFreeTimeIds = new Set(data.blocks.map((b) => b.freeTimeSlot?.taskId).filter(Boolean) as string[]);
+    const usedHomeIds = new Set(data.blocks.flatMap((b) => b.homeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
+    const usedWorkIds = new Set(data.blocks.flatMap((b) => b.workSlots.map((s) => s?.workItemId).filter(Boolean)) as string[]);
+    const usedFreeTimeIds = new Set(data.blocks.flatMap((b) => b.freeTimeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
+    
+    const homeSlot1 = pickRandomHomeTask(0, usedHomeIds);
+    if (homeSlot1) usedHomeIds.add(homeSlot1.taskId);
+    const homeSlot2 = pickRandomHomeTask(0, usedHomeIds);
+    
+    const workSlot1 = pickRandomWorkTask(usedWorkIds);
+    if (workSlot1) usedWorkIds.add(workSlot1.workItemId);
+    const workSlot2 = pickRandomWorkTask(usedWorkIds);
+    
+    const freeTimeSlot = pickRandomFreeTimeTask(usedFreeTimeIds);
+    
     const block: TaskBlock = {
       id: generateId(),
-      homeSlot: pickRandomHomeTask(0, usedHomeIds),
-      workSlot: pickRandomWorkTask(usedWorkIds),
-      freeTimeSlot: pickRandomFreeTimeTask(usedFreeTimeIds),
+      homeSlots: [homeSlot1, homeSlot2],
+      workSlots: [workSlot1, workSlot2],
+      freeTimeSlots: [freeTimeSlot],
     };
     addBlock(block);
   };
 
   // === Reroll ===
-  const handleReroll = (blockId: string, slotType: "home" | "work" | "freeTime") => {
+  const handleReroll = (blockId: string, slotType: "home" | "work" | "freeTime", slotIndex: number) => {
     const block = data.blocks.find((b) => b.id === blockId);
     if (!block) return;
-    const otherBlocks = data.blocks.filter((b) => b.id !== blockId);
+    const allBlocks = data.blocks;
+    const usedHomeIds = new Set(allBlocks.flatMap((b) => b.homeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
+    const usedWorkIds = new Set(allBlocks.flatMap((b) => b.workSlots.map((s) => s?.workItemId).filter(Boolean)) as string[]);
+    const usedFreeTimeIds = new Set(allBlocks.flatMap((b) => b.freeTimeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
+    
     let updated: TaskBlock;
     if (slotType === "home") {
-      const usedHomeIds = new Set(otherBlocks.map((b) => b.homeSlot?.taskId).filter(Boolean) as string[]);
-      updated = { ...block, homeSlot: pickRandomHomeTask(block.homeSlot?.currentCategoryIndex ?? 0, usedHomeIds) };
+      const currentSlot = block.homeSlots[slotIndex];
+      if (currentSlot) usedHomeIds.delete(currentSlot.taskId);
+      const newSlot = pickRandomHomeTask(currentSlot?.currentCategoryIndex ?? 0, usedHomeIds);
+      const newHomeSlots = [...block.homeSlots];
+      newHomeSlots[slotIndex] = newSlot;
+      updated = { ...block, homeSlots: newHomeSlots };
     } else if (slotType === "work") {
-      const usedWorkIds = new Set(otherBlocks.map((b) => b.workSlot?.workItemId).filter(Boolean) as string[]);
-      updated = { ...block, workSlot: pickRandomWorkTask(usedWorkIds) };
+      const currentSlot = block.workSlots[slotIndex];
+      if (currentSlot) usedWorkIds.delete(currentSlot.workItemId);
+      const newSlot = pickRandomWorkTask(usedWorkIds);
+      const newWorkSlots = [...block.workSlots];
+      newWorkSlots[slotIndex] = newSlot;
+      updated = { ...block, workSlots: newWorkSlots };
     } else {
-      const usedFreeTimeIds = new Set(otherBlocks.map((b) => b.freeTimeSlot?.taskId).filter(Boolean) as string[]);
-      updated = { ...block, freeTimeSlot: pickRandomFreeTimeTask(usedFreeTimeIds) };
+      const currentSlot = block.freeTimeSlots[slotIndex];
+      if (currentSlot) usedFreeTimeIds.delete(currentSlot.taskId);
+      const newSlot = pickRandomFreeTimeTask(usedFreeTimeIds);
+      const newFreeTimeSlots = [...block.freeTimeSlots];
+      newFreeTimeSlots[slotIndex] = newSlot;
+      updated = { ...block, freeTimeSlots: newFreeTimeSlots };
     }
     updateBlock(updated);
   };
 
   // === Next category for home task ===
-  const handleNextCategory = (blockId: string) => {
+  const handleNextCategory = (blockId: string, slotIndex: number) => {
     const block = data.blocks.find((b) => b.id === blockId);
-    if (!block?.homeSlot) return;
-    const nextIndex = block.homeSlot.currentCategoryIndex + 1;
+    const currentSlot = block?.homeSlots[slotIndex];
+    if (!currentSlot) return;
+    const nextIndex = currentSlot.currentCategoryIndex + 1;
     if (nextIndex >= HOME_PRIORITY_ORDER.length) return;
     const newSlot = pickRandomHomeTask(nextIndex);
-    updateBlock({ ...block, homeSlot: newSlot });
+    const newHomeSlots = [...block.homeSlots];
+    newHomeSlots[slotIndex] = newSlot;
+    updateBlock({ ...block, homeSlots: newHomeSlots });
   };
 
   // === Mark slot ===
-  const handleMarkSlot = (blockId: string, slotType: "home" | "work" | "freeTime", status: BlockSlotStatus) => {
+  const handleMarkSlot = (blockId: string, slotType: "home" | "work" | "freeTime", slotIndex: number, status: BlockSlotStatus) => {
     if (status === "blocked") {
-      setBlockedReasonDialog({ blockId, slotType });
+      setBlockedReasonDialog({ blockId, slotType, slotIndex });
       setBlockedReason("");
       return;
     }
@@ -227,54 +276,63 @@ export default function GenerateBlockPage() {
     const block = data.blocks.find((b) => b.id === blockId);
     if (!block) return;
 
-    applySlotMark(block, slotType, status);
+    applySlotMark(block, slotType, slotIndex, status);
   };
 
-  const applySlotMark = (block: TaskBlock, slotType: "home" | "work" | "freeTime", status: BlockSlotStatus, reason?: string) => {
+  const applySlotMark = (block: TaskBlock, slotType: "home" | "work" | "freeTime", slotIndex: number, status: BlockSlotStatus, reason?: string) => {
     // Apply status to underlying task
-    if (slotType === "home" && block.homeSlot) {
-      const task = data.homeTasks.find((t) => t.id === block.homeSlot!.taskId);
-      if (task) {
-        if (status === "complete") {
-          updateHomeTask({ ...task, status: "complete" });
-        } else if (status === "in-progress") {
-          updateHomeTask({ ...task, status: "in-progress" });
-        } else if (status === "blocked") {
-          updateHomeTask({ ...task, status: "blocked", blockedReason: reason });
-        }
-      }
-      updateBlock({ ...block, homeSlot: null });
-    } else if (slotType === "work" && block.workSlot) {
-      const workItem = data.workItems.find((w) => w.id === block.workSlot!.workItemId);
-      if (workItem && block.workSlot.subtaskId) {
-        const subtask = workItem.subtasks.find((s) => s.id === block.workSlot!.subtaskId);
-        if (subtask) {
+    if (slotType === "home") {
+      const slot = block.homeSlots[slotIndex];
+      if (slot) {
+        const task = data.homeTasks.find((t) => t.id === slot.taskId);
+        if (task) {
           if (status === "complete") {
-            updateSubtask(workItem.id, { ...subtask, status: "complete" });
+            updateHomeTask({ ...task, status: "complete" });
           } else if (status === "in-progress") {
-            updateSubtask(workItem.id, { ...subtask, status: "in-progress" });
+            updateHomeTask({ ...task, status: "in-progress" });
+          } else if (status === "blocked") {
+            updateHomeTask({ ...task, status: "blocked", blockedReason: reason });
           }
         }
+        const newHomeSlots = [...block.homeSlots];
+        newHomeSlots[slotIndex] = null;
+        updateBlock({ ...block, homeSlots: newHomeSlots });
       }
-      updateBlock({ ...block, workSlot: null });
-    } else if (slotType === "freeTime" && block.freeTimeSlot) {
-      const task = data.freeTimeTasks.find((t) => t.id === block.freeTimeSlot!.taskId);
-      if (task) {
-        if (status === "complete") {
-          updateFreeTimeTask({ ...task, status: "complete" });
-        } else if (status === "in-progress") {
-          updateFreeTimeTask({ ...task, status: "in-progress" });
-        } else if (status === "blocked") {
-          updateFreeTimeTask({ ...task, status: "blocked", blockedReason: reason });
+    } else if (slotType === "work") {
+      const slot = block.workSlots[slotIndex];
+      if (slot) {
+        const workItem = data.workItems.find((w) => w.id === slot.workItemId);
+        if (workItem && slot.subtaskId) {
+          const subtask = workItem.subtasks.find((s) => s.id === slot.subtaskId);
+          if (subtask) {
+            if (status === "complete") {
+              updateSubtask(workItem.id, { ...subtask, status: "complete" });
+            } else if (status === "in-progress") {
+              updateSubtask(workItem.id, { ...subtask, status: "in-progress" });
+            }
+          }
         }
+        const newWorkSlots = [...block.workSlots];
+        newWorkSlots[slotIndex] = null;
+        updateBlock({ ...block, workSlots: newWorkSlots });
       }
-      updateBlock({ ...block, freeTimeSlot: null });
-    }
-
-    // Clean up empty blocks
-    const updatedBlock = data.blocks.find((b) => b.id === block.id);
-    if (updatedBlock && !updatedBlock.homeSlot && !updatedBlock.workSlot && !updatedBlock.freeTimeSlot) {
-      // Block will be cleaned after state update
+    } else if (slotType === "freeTime") {
+      const slot = block.freeTimeSlots[slotIndex];
+      if (slot) {
+        const task = data.freeTimeTasks.find((t) => t.id === slot.taskId);
+        if (task) {
+          if (status === "complete") {
+            updateFreeTimeTask({ ...task, status: "complete" });
+          } else if (status === "in-progress") {
+            updateFreeTimeTask({ ...task, status: "in-progress" });
+          } else if (status === "blocked") {
+            updateFreeTimeTask({ ...task, status: "blocked", blockedReason: reason });
+          }
+        }
+        const newFreeTimeSlots = [...block.freeTimeSlots];
+        newFreeTimeSlots[slotIndex] = null;
+        updateBlock({ ...block, freeTimeSlots: newFreeTimeSlots });
+      }
     }
   };
 
@@ -282,13 +340,13 @@ export default function GenerateBlockPage() {
     if (!blockedReasonDialog || !blockedReason.trim()) return;
     const block = data.blocks.find((b) => b.id === blockedReasonDialog.blockId);
     if (!block) return;
-    applySlotMark(block, blockedReasonDialog.slotType, "blocked", blockedReason.trim());
+    applySlotMark(block, blockedReasonDialog.slotType, blockedReasonDialog.slotIndex, "blocked", blockedReason.trim());
     setBlockedReasonDialog(null);
   };
 
   // === Manual select ===
-  const openManualSelect = (blockId: string, slotType: "home" | "work" | "freeTime") => {
-    setManualSelectDialog({ blockId, slotType });
+  const openManualSelect = (blockId: string, slotType: "home" | "work" | "freeTime", slotIndex: number) => {
+    setManualSelectDialog({ blockId, slotType, slotIndex });
     setManualSelection("");
     setManualSubSelection("");
   };
@@ -297,28 +355,26 @@ export default function GenerateBlockPage() {
     if (!manualSelectDialog || !manualSelection) return;
     const block = data.blocks.find((b) => b.id === manualSelectDialog.blockId);
     if (!block) return;
+    const slotIndex = manualSelectDialog.slotIndex;
 
     if (manualSelectDialog.slotType === "home") {
       const task = data.homeTasks.find((t) => t.id === manualSelection);
       if (task) {
         const catIdx = HOME_PRIORITY_ORDER.indexOf(task.category);
-        updateBlock({
-          ...block,
-          homeSlot: { taskId: task.id, currentCategoryIndex: catIdx >= 0 ? catIdx : 4, status: "active" },
-        });
+        const newHomeSlots = [...block.homeSlots];
+        newHomeSlots[slotIndex] = { taskId: task.id, currentCategoryIndex: catIdx >= 0 ? catIdx : 4, status: "active" };
+        updateBlock({ ...block, homeSlots: newHomeSlots });
       }
     } else if (manualSelectDialog.slotType === "work") {
-      updateBlock({
-        ...block,
-        workSlot: manualSelection
-          ? { workItemId: manualSelection, subtaskId: manualSubSelection || "", status: "active" }
-          : null,
-      });
+      const newWorkSlots = [...block.workSlots];
+      newWorkSlots[slotIndex] = manualSelection
+        ? { workItemId: manualSelection, subtaskId: manualSubSelection || "", status: "active" }
+        : null;
+      updateBlock({ ...block, workSlots: newWorkSlots });
     } else {
-      updateBlock({
-        ...block,
-        freeTimeSlot: manualSelection ? { taskId: manualSelection, status: "active" } : null,
-      });
+      const newFreeTimeSlots = [...block.freeTimeSlots];
+      newFreeTimeSlots[slotIndex] = manualSelection ? { taskId: manualSelection, status: "active" } : null;
+      updateBlock({ ...block, freeTimeSlots: newFreeTimeSlots });
     }
     setManualSelectDialog(null);
   };
@@ -337,7 +393,10 @@ export default function GenerateBlockPage() {
     return data.freeTimeCategories.find((c) => c.id === task.categoryId)?.name || "";
   };
 
-  const isBlockEmpty = (block: TaskBlock) => !block.homeSlot && !block.workSlot && !block.freeTimeSlot;
+  const isBlockEmpty = (block: TaskBlock) => 
+    (block.homeSlots?.every((s) => !s) ?? true) && 
+    (block.workSlots?.every((s) => !s) ?? true) && 
+    (block.freeTimeSlots?.every((s) => !s) ?? true);
 
   // Clean up empty blocks
   const activeBlocks = data.blocks.filter((b) => !isBlockEmpty(b));
@@ -380,68 +439,77 @@ export default function GenerateBlockPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Home Task Slot */}
-            <SlotCard
-              icon={<Home className="h-4 w-4" />}
-              label="Home Task"
-              isEmpty={!block.homeSlot}
-              taskName={block.homeSlot ? getHomeTaskName(block.homeSlot.taskId) : undefined}
-              taskMeta={
-                block.homeSlot
-                  ? PRIORITY_LABELS[HOME_PRIORITY_ORDER[block.homeSlot.currentCategoryIndex]] || "Misc"
-                  : undefined
-              }
-              onReroll={() => handleReroll(block.id, "home")}
-              onManualSelect={() => openManualSelect(block.id, "home")}
-              onMarkComplete={() => handleMarkSlot(block.id, "home", "complete")}
-              onMarkInProgress={() => handleMarkSlot(block.id, "home", "in-progress")}
-              onMarkBlocked={() => handleMarkSlot(block.id, "home", "blocked")}
-              extraAction={
-                block.homeSlot &&
-                block.homeSlot.currentCategoryIndex < HOME_PRIORITY_ORDER.length - 1 ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 text-xs"
-                    onClick={() => handleNextCategory(block.id)}
-                  >
-                    <ChevronRight className="h-3.5 w-3.5 mr-1" />
-                    Next Category
-                  </Button>
-                ) : undefined
-              }
-            />
+            {/* Home Task Slots */}
+            {block.homeSlots.map((slot, slotIdx) => (
+              <SlotCard
+                key={`home-${slotIdx}`}
+                icon={<Home className="h-4 w-4" />}
+                label={`Home Task ${slotIdx + 1}`}
+                isEmpty={!slot}
+                taskName={slot ? getHomeTaskName(slot.taskId) : undefined}
+                taskMeta={
+                  slot
+                    ? PRIORITY_LABELS[HOME_PRIORITY_ORDER[slot.currentCategoryIndex]] || "Misc"
+                    : undefined
+                }
+                onReroll={() => handleReroll(block.id, "home", slotIdx)}
+                onManualSelect={() => openManualSelect(block.id, "home", slotIdx)}
+                onMarkComplete={() => handleMarkSlot(block.id, "home", slotIdx, "complete")}
+                onMarkInProgress={() => handleMarkSlot(block.id, "home", slotIdx, "in-progress")}
+                onMarkBlocked={() => handleMarkSlot(block.id, "home", slotIdx, "blocked")}
+                extraAction={
+                  slot &&
+                  slot.currentCategoryIndex < HOME_PRIORITY_ORDER.length - 1 ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 text-xs"
+                      onClick={() => handleNextCategory(block.id, slotIdx)}
+                    >
+                      <ChevronRight className="h-3.5 w-3.5 mr-1" />
+                      Next Category
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ))}
 
-            {/* Work Task Slot */}
-            <SlotCard
-              icon={<Briefcase className="h-4 w-4" />}
-              label="Work Task"
-              isEmpty={!block.workSlot}
-              taskName={
-                block.workSlot
-                  ? `${getWorkItemName(block.workSlot.workItemId)}${block.workSlot.subtaskId ? ` → ${getSubtaskName(block.workSlot.workItemId, block.workSlot.subtaskId)}` : ""}`
-                  : undefined
-              }
-              onReroll={() => handleReroll(block.id, "work")}
-              onManualSelect={() => openManualSelect(block.id, "work")}
-              onMarkComplete={() => handleMarkSlot(block.id, "work", "complete")}
-              onMarkInProgress={() => handleMarkSlot(block.id, "work", "in-progress")}
-              onMarkBlocked={() => handleMarkSlot(block.id, "work", "blocked")}
-            />
+            {/* Work Task Slots */}
+            {block.workSlots.map((slot, slotIdx) => (
+              <SlotCard
+                key={`work-${slotIdx}`}
+                icon={<Briefcase className="h-4 w-4" />}
+                label={`Work Task ${slotIdx + 1}`}
+                isEmpty={!slot}
+                taskName={
+                  slot
+                    ? `${getWorkItemName(slot.workItemId)}${slot.subtaskId ? ` → ${getSubtaskName(slot.workItemId, slot.subtaskId)}` : ""}`
+                    : undefined
+                }
+                onReroll={() => handleReroll(block.id, "work", slotIdx)}
+                onManualSelect={() => openManualSelect(block.id, "work", slotIdx)}
+                onMarkComplete={() => handleMarkSlot(block.id, "work", slotIdx, "complete")}
+                onMarkInProgress={() => handleMarkSlot(block.id, "work", slotIdx, "in-progress")}
+                onMarkBlocked={() => handleMarkSlot(block.id, "work", slotIdx, "blocked")}
+              />
+            ))}
 
             {/* Free Time Slot */}
-            <SlotCard
-              icon={<Gamepad2 className="h-4 w-4" />}
-              label="Free Time Task"
-              isEmpty={!block.freeTimeSlot}
-              taskName={block.freeTimeSlot ? getFreeTimeTaskName(block.freeTimeSlot.taskId) : undefined}
-              taskMeta={block.freeTimeSlot ? getFreeTimeTaskCategory(block.freeTimeSlot.taskId) : undefined}
-              onReroll={() => handleReroll(block.id, "freeTime")}
-              onManualSelect={() => openManualSelect(block.id, "freeTime")}
-              onMarkComplete={() => handleMarkSlot(block.id, "freeTime", "complete")}
-              onMarkInProgress={() => handleMarkSlot(block.id, "freeTime", "in-progress")}
-              onMarkBlocked={() => handleMarkSlot(block.id, "freeTime", "blocked")}
-            />
+            {block.freeTimeSlots.map((slot, slotIdx) => (
+              <SlotCard
+                key={`freetime-${slotIdx}`}
+                icon={<Gamepad2 className="h-4 w-4" />}
+                label="Free Time Task"
+                isEmpty={!slot}
+                taskName={slot ? getFreeTimeTaskName(slot.taskId) : undefined}
+                taskMeta={slot ? getFreeTimeTaskCategory(slot.taskId) : undefined}
+                onReroll={() => handleReroll(block.id, "freeTime", slotIdx)}
+                onManualSelect={() => openManualSelect(block.id, "freeTime", slotIdx)}
+                onMarkComplete={() => handleMarkSlot(block.id, "freeTime", slotIdx, "complete")}
+                onMarkInProgress={() => handleMarkSlot(block.id, "freeTime", slotIdx, "in-progress")}
+                onMarkBlocked={() => handleMarkSlot(block.id, "freeTime", slotIdx, "blocked")}
+              />
+            ))}
           </CardContent>
         </Card>
       ))}
