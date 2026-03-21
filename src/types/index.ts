@@ -1,90 +1,98 @@
-// ===== Home Tasks =====
-export type HomeTaskCategory = 'repeating' | 'priority' | 'scheduled' | 'freelance' | 'misc';
-export type RepeatingType = 'weekly' | 'biweekly' | 'bimonthly' | 'monthly' | 'quarterly' | 'yearly';
-export type TaskStatus = 'incomplete' | 'in-progress' | 'blocked' | 'complete';
-
-export interface HomeTask {
+// ===== Flags =====
+export interface Flag {
   id: string;
   name: string;
-  description: string;
-  category: HomeTaskCategory;
-  repeatingType?: RepeatingType;
-  scheduledDate?: string; // ISO date string
-  status: TaskStatus;
-  blockedReason?: string;
-  weekendOnly?: boolean;
+  color: string;
 }
 
-// ===== Work Tasks =====
-export type SubtaskStatus = 'incomplete' | 'in-progress' | 'blocked' | 'complete';
+// ===== Custom Statuses =====
+export interface CustomStatus {
+  id: string;
+  name: string;
+  color: string;
+  isComplete: boolean;
+  isInProgress: boolean;
+  isRollable: boolean;
+}
 
+// ===== Task Subtypes =====
+export interface TaskSubtype {
+  id: string;
+  name: string;
+  priority: number; // lower = higher priority (display order)
+}
+
+// ===== Task Types =====
+export interface TaskType {
+  id: string;
+  name: string;
+  icon: string; // lucide icon name
+  color: string; // hex
+  subtypes: TaskSubtype[];
+}
+
+// ===== Repeat =====
+export type RepeatInterval = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'quarterly' | 'yearly';
+
+// ===== Subtasks =====
 export interface Subtask {
   id: string;
   name: string;
-  status: SubtaskStatus;
-  blockedReason?: string;
+  statusId: string;
+  flagIds?: string[];
 }
 
-export interface WorkItem {
+// ===== Tasks =====
+export interface Task {
   id: string;
+  typeId: string;
+  subtypeId: string;
   name: string;
   description: string;
-  section: 'active' | 'backlog';
+  statusId: string;
+  priority: number; // lower = higher priority
+  flagIds?: string[];
   subtasks: Subtask[];
-}
-
-// ===== Free Time Tasks =====
-export interface FreeTimeCategory {
-  id: string;
-  name: string;
-}
-
-export interface FreeTimeTask {
-  id: string;
-  name: string;
-  description: string;
-  categoryId: string;
-  section: 'active' | 'backlog';
-  status: TaskStatus;
-  blockedReason?: string;
+  repeating?: boolean;
+  repeatInterval?: RepeatInterval;
+  lastCompletedAt?: string; // ISO date
+  dueDate?: string; // ISO date string (YYYY-MM-DD)
 }
 
 // ===== Generate Block =====
-export type BlockSlotStatus = 'active' | 'complete' | 'in-progress' | 'blocked';
-
-export interface BlockHomeSlot {
-  taskId: string;
-  currentCategoryIndex: number; // index into priority order array
-  status: BlockSlotStatus;
-  blockedReason?: string;
+export interface BlockSlotConfig {
+  typeId: string; // taskType id
+  flagId?: string;
+  subtypeOrder?: string[]; // ordered subtype IDs for priority during roll (omit = use subtype.priority order)
 }
 
-export interface BlockWorkSlot {
-  workItemId: string;
-  subtaskId: string;
-  status: BlockSlotStatus;
-  blockedReason?: string;
+export interface BlockTypeConfig {
+  id: string;
+  name: string;
+  slots: BlockSlotConfig[];
 }
 
-export interface BlockFreeTimeSlot {
+export type BlockSettings = BlockTypeConfig[];
+
+export interface BlockTaskSlot {
   taskId: string;
-  status: BlockSlotStatus;
-  blockedReason?: string;
+  subtaskId?: string;
+  status: 'active' | 'skipped' | 'complete';
 }
 
 export interface TaskBlock {
   id: string;
-  homeSlots: (BlockHomeSlot | null)[];
-  workSlots: (BlockWorkSlot | null)[];
-  freeTimeSlots: (BlockFreeTimeSlot | null)[];
+  blockConfigId: string;
+  slots: (BlockTaskSlot | null)[];
 }
 
 // ===== App State =====
 export interface AppData {
   version: string;
-  homeTasks: HomeTask[];
-  workItems: WorkItem[];
-  freeTimeCategories: FreeTimeCategory[];
-  freeTimeTasks: FreeTimeTask[];
+  flags: Flag[];
+  statuses: CustomStatus[];
+  taskTypes: TaskType[];
+  tasks: Task[];
   blocks: TaskBlock[];
+  blockSettings: BlockSettings;
 }

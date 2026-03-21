@@ -2,66 +2,23 @@
 
 import { useState, useCallback } from "react";
 import { useAppContext } from "@/contexts/AppContext";
-import type {
-  HomeTask,
-  HomeTaskCategory,
-  TaskBlock,
-  BlockHomeSlot,
-  BlockWorkSlot,
-  BlockFreeTimeSlot,
-  BlockSlotStatus,
-} from "@/types";
+import type { TaskBlock, BlockTaskSlot, BlockTypeConfig, BlockSlotConfig } from "@/types";
+import { getIcon } from "@/lib/icons";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Shuffle,
-  Dices,
-  CheckCircle2,
-  Clock,
-  Ban,
-  Trash2,
-  ChevronRight,
-  Home,
-  Briefcase,
-  Gamepad2,
-  Replace,
+  Shuffle, Dices, CheckCircle2, Trash2, Replace, Calendar, Settings, Plus,
+  GripVertical, Pencil, SkipForward,
 } from "lucide-react";
-
-// Home task priority order for block generation
-const HOME_PRIORITY_ORDER: HomeTaskCategory[] = ["weekend-only" as HomeTaskCategory, "scheduled", "priority", "in-progress" as HomeTaskCategory, "repeating", "freelance", "misc"];
-
-// Helper to check if today is weekend (Saturday=6, Sunday=0)
-const isWeekend = () => {
-  const day = new Date().getDay();
-  return day === 0 || day === 6;
-};
-// Mapped display labels
-const PRIORITY_LABELS: Record<string, string> = {
-  "weekend-only": "Weekend Only",
-  scheduled: "Scheduled",
-  priority: "Priority",
-  "in-progress": "In Progress",
-  repeating: "Repeating",
-  freelance: "Freelance",
-  misc: "Misc",
-};
 
 function generateId(): string {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
@@ -69,464 +26,546 @@ function generateId(): string {
 
 export default function GenerateBlockPage() {
   const {
-    data,
-    addBlock,
-    updateBlock,
-    deleteBlock,
-    updateHomeTask,
-    updateSubtask,
-    updateFreeTimeTask,
+    data, addBlock, updateBlock, deleteBlock, updateTask, updateSubtask,
+    addBlockTypeConfig, updateBlockTypeConfig, deleteBlockTypeConfig,
   } = useAppContext();
 
-  const [blockedReasonDialog, setBlockedReasonDialog] = useState<{
-    blockId: string;
-    slotType: "home" | "work" | "freeTime";
-    slotIndex: number;
-  } | null>(null);
-  const [blockedReason, setBlockedReason] = useState("");
+  const [showSettings, setShowSettings] = useState(false);
+  const [editingConfig, setEditingConfig] = useState<BlockTypeConfig | null>(null);
+  const [newConfigName, setNewConfigName] = useState("");
 
-  // Manual select state
   const [manualSelectDialog, setManualSelectDialog] = useState<{
-    blockId: string;
-    slotType: "home" | "work" | "freeTime";
-    slotIndex: number;
+    blockId: string; slotIndex: number; typeId: string; flagId?: string;
   } | null>(null);
   const [manualSelection, setManualSelection] = useState("");
   const [manualSubSelection, setManualSubSelection] = useState("");
 
-  // === Home task generation logic ===
-  const getHomeTasksForPriority = useCallback(
-    (priorityIndex: number): HomeTask[] => {
-      const category = HOME_PRIORITY_ORDER[priorityIndex];
-      if (!category) return [];
-      const weekend = isWeekend();
+  // === Helpers ===
+  const getTaskType = (id: string) => data.taskTypes.find((t) => t.id === id);
+  const getTask = (id: string) => data.tasks.find((t) => t.id === id);
+  const getStatus = (id: string) => data.statuses.find((s) => s.id === id);
+  const getFlagName = (id?: string) => id ? (data.flags.find((f) => f.id === id)?.name ?? "") : "";
+  const getFlagColor = (id?: string) => id ? (data.flags.find((f) => f.id === id)?.color ?? "#888") : "#888";
 
-      if ((category as string) === "weekend-only") {
-        // Only return weekend-only tasks if it's actually the weekend
-        if (!weekend) return [];
-        return data.homeTasks.filter(
-          (t) => t.weekendOnly && t.status !== "complete" && t.status !== "blocked"
-        );
-      }
+  // === Pick task for a slot ===
+  // Flag rules:
+  //   - Tasks with NO flags ("free tasks") are eligible for any slot.
+  //   - Tasks WITH flags are only eligible for slots whose flagId matches one of their flags.
+  //
+  // For a FLAGGED slot, pass order (each pass sweeps ALL subtypes in priority order):
+  //   Pass 1: flag-matched tasks only (exhausts entire priority list before moving on)
+  //   Pass 2: free tasks only (no flags assigned)
+  //   Pass 3: any rollable task (full fallback)
+  //
+  // For an UNFLAGGED slot:
+  //   Pass 1: free tasks only
+  //   Pass 2: any rollable task (full fallback)
+  const pickTask = useCallback((
+    typeId: string,
+    excludeIds: Set<string>,
+    flagId?: string,
+    subtypeOrder?: string[]
+  ): BlockTaskSlot | null => {
+    const taskType = data.taskTypes.find((t) => t.id === typeId);
+    if (!taskType) return null;
 
-      if (category === "scheduled") {
-        const today = new Date().toISOString().split("T")[0];
-        return data.homeTasks.filter(
-          (t) =>
-            t.category === "scheduled" &&
-            t.scheduledDate &&
-            t.scheduledDate <= today &&
-            t.status !== "complete" &&
-            t.status !== "blocked"
-        );
-      }
-      if ((category as string) === "in-progress") {
-        return data.homeTasks.filter(
-          (t) => t.status === "in-progress" && t.category !== "scheduled"
-        );
-      }
-      if (category === "repeating") {
-        return data.homeTasks.filter(
-          (t) => t.category === "repeating" && t.status !== "complete" && t.status !== "blocked" && !t.weekendOnly
-        );
-      }
-      // For all other categories, exclude weekend-only tasks on weekdays
-      return data.homeTasks.filter(
-        (t) => t.category === category && t.status !== "complete" && t.status !== "blocked" && (weekend || !t.weekendOnly)
-      );
-    },
-    [data.homeTasks]
-  );
+    const orderedSubtypeIds = subtypeOrder && subtypeOrder.length > 0
+      ? subtypeOrder
+      : [...taskType.subtypes].sort((a, b) => a.priority - b.priority).map((s) => s.id);
 
-  const pickRandomHomeTask = useCallback(
-    (startIndex: number = 0, excludeIds: Set<string> = new Set()): BlockHomeSlot | null => {
-      for (let i = startIndex; i < HOME_PRIORITY_ORDER.length; i++) {
-        const tasks = getHomeTasksForPriority(i).filter((t) => !excludeIds.has(t.id));
-        if (tasks.length > 0) {
-          const inProgress = tasks.filter((t) => t.status === "in-progress");
-          const pool = inProgress.length > 0 ? inProgress : tasks;
-          const task = pool[Math.floor(Math.random() * pool.length)];
-          return { taskId: task.id, currentCategoryIndex: i, status: "active" };
-        }
-      }
-      return null;
-    },
-    [getHomeTasksForPriority]
-  );
-
-  // === Work task generation logic ===
-  const pickRandomWorkTask = useCallback((excludeItemIds: Set<string> = new Set()): BlockWorkSlot | null => {
-    // Only consider items that have at least one rollable subtask (or no subtasks at all)
-    const activeItems = data.workItems.filter((w) => {
-      if (w.section !== "active" || excludeItemIds.has(w.id)) return false;
-      if (w.subtasks.length === 0) return true;
-      return w.subtasks.some((s) => s.status !== "complete" && s.status !== "blocked");
-    });
-    if (activeItems.length === 0) return null;
-    // Prefer items that have at least one in-progress subtask
-    const inProgressItems = activeItems.filter((w) => w.subtasks.some((s) => s.status === "in-progress"));
-    const itemPool = inProgressItems.length > 0 ? inProgressItems : activeItems;
-    const item = itemPool[Math.floor(Math.random() * itemPool.length)];
-    const rollableSubtasks = item.subtasks.filter((s) => s.status !== "complete" && s.status !== "blocked");
-    if (rollableSubtasks.length === 0) {
-      if (item.subtasks.length === 0) {
-        return { workItemId: item.id, subtaskId: "", status: "active" };
-      }
-      return null;
-    }
-    // Within the item, prefer in-progress subtasks
-    const inProgressSubtasks = rollableSubtasks.filter((s) => s.status === "in-progress");
-    const subtaskPool = inProgressSubtasks.length > 0 ? inProgressSubtasks : rollableSubtasks;
-    const subtask = subtaskPool[Math.floor(Math.random() * subtaskPool.length)];
-    return { workItemId: item.id, subtaskId: subtask.id, status: "active" };
-  }, [data.workItems]);
-
-  // === Free time task generation logic ===
-  const pickRandomFreeTimeTask = useCallback((excludeIds: Set<string> = new Set()): BlockFreeTimeSlot | null => {
-    const activeTasks = data.freeTimeTasks.filter((t) => t.section === "active" && (t.status ?? "incomplete") !== "blocked" && (t.status ?? "incomplete") !== "complete" && !excludeIds.has(t.id));
-    if (activeTasks.length === 0) return null;
-    const inProgress = activeTasks.filter((t) => t.status === "in-progress");
-    const pool = inProgress.length > 0 ? inProgress : activeTasks;
-    const task = pool[Math.floor(Math.random() * pool.length)];
-    return { taskId: task.id, status: "active" };
-  }, [data.freeTimeTasks]);
-
-  // === Generate a new block ===
-  const handleGenerateBlock = () => {
-    if (data.blocks.length >= 3) return;
-    const usedHomeIds = new Set(data.blocks.flatMap((b) => b.homeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
-    const usedWorkIds = new Set(data.blocks.flatMap((b) => b.workSlots.map((s) => s?.workItemId).filter(Boolean)) as string[]);
-    const usedFreeTimeIds = new Set(data.blocks.flatMap((b) => b.freeTimeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
-    
-    const homeSlot1 = pickRandomHomeTask(0, usedHomeIds);
-    if (homeSlot1) usedHomeIds.add(homeSlot1.taskId);
-    const homeSlot2 = pickRandomHomeTask(0, usedHomeIds);
-    
-    const workSlot1 = pickRandomWorkTask(usedWorkIds);
-    if (workSlot1) usedWorkIds.add(workSlot1.workItemId);
-    const workSlot2 = pickRandomWorkTask(usedWorkIds);
-    
-    const freeTimeSlot = pickRandomFreeTimeTask(usedFreeTimeIds);
-    
-    const block: TaskBlock = {
-      id: generateId(),
-      homeSlots: [homeSlot1, homeSlot2],
-      workSlots: [workSlot1, workSlot2],
-      freeTimeSlots: [freeTimeSlot],
+    const pickFrom = (pool: typeof data.tasks): BlockTaskSlot | null => {
+      if (pool.length === 0) return null;
+      const inProgress = pool.filter((t) => data.statuses.find((s) => s.id === t.statusId)?.isInProgress);
+      const finalPool = inProgress.length > 0 ? inProgress : pool;
+      const task = finalPool[Math.floor(Math.random() * finalPool.length)];
+      const availableSubs = task.subtasks.filter((s) => !data.statuses.find((x) => x.id === s.statusId)?.isComplete);
+      const subtaskId = availableSubs.length > 0
+        ? availableSubs[Math.floor(Math.random() * availableSubs.length)].id
+        : undefined;
+      return { taskId: task.id, subtaskId, status: "active" };
     };
-    addBlock(block);
+
+    const getRollable = (subtypeId: string) =>
+      data.tasks.filter((t) => {
+        const status = data.statuses.find((s) => s.id === t.statusId);
+        return (
+          t.typeId === typeId &&
+          t.subtypeId === subtypeId &&
+          !excludeIds.has(t.id) &&
+          (status?.isRollable ?? true)
+        );
+      }).sort((a, b) => a.priority - b.priority);
+
+    const sweepWith = (filter: (t: typeof data.tasks[0]) => boolean): BlockTaskSlot | null => {
+      for (const subtypeId of orderedSubtypeIds) {
+        const result = pickFrom(getRollable(subtypeId).filter(filter));
+        if (result) return result;
+      }
+      return null;
+    };
+
+    // Pass 1 (flagged slots only): flag-matched tasks across all subtypes
+    if (flagId) {
+      const r = sweepWith((t) => (t.flagIds ?? []).includes(flagId));
+      if (r) return r;
+    }
+
+    // Pass 2: free tasks (no flags) across all subtypes
+    return sweepWith((t) => (t.flagIds ?? []).length === 0);
+  }, [data.tasks, data.statuses, data.taskTypes]);
+
+  // === Generate block ===
+  const handleGenerateBlock = (configId: string) => {
+    const config = data.blockSettings.find((c) => c.id === configId);
+    if (!config) return;
+    const existing = data.blocks.find((b) => b.blockConfigId === configId);
+    const usedIds = new Set<string>();
+
+    const slots: (BlockTaskSlot | null)[] = config.slots.map((cfg) => {
+      const slot = pickTask(cfg.typeId, usedIds, cfg.flagId, cfg.subtypeOrder);
+      if (slot) usedIds.add(slot.taskId);
+      return slot;
+    });
+
+    const block: TaskBlock = { id: existing?.id ?? generateId(), blockConfigId: configId, slots };
+    if (existing) updateBlock(block); else addBlock(block);
   };
 
   // === Reroll ===
-  const handleReroll = (blockId: string, slotType: "home" | "work" | "freeTime", slotIndex: number) => {
+  const handleReroll = (blockId: string, slotIndex: number) => {
     const block = data.blocks.find((b) => b.id === blockId);
     if (!block) return;
-    const allBlocks = data.blocks;
-    const usedHomeIds = new Set(allBlocks.flatMap((b) => b.homeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
-    const usedWorkIds = new Set(allBlocks.flatMap((b) => b.workSlots.map((s) => s?.workItemId).filter(Boolean)) as string[]);
-    const usedFreeTimeIds = new Set(allBlocks.flatMap((b) => b.freeTimeSlots.map((s) => s?.taskId).filter(Boolean)) as string[]);
-    
-    let updated: TaskBlock;
-    if (slotType === "home") {
-      const currentSlot = block.homeSlots[slotIndex];
-      if (currentSlot) usedHomeIds.delete(currentSlot.taskId);
-      const newSlot = pickRandomHomeTask(currentSlot?.currentCategoryIndex ?? 0, usedHomeIds);
-      const newHomeSlots = [...block.homeSlots];
-      newHomeSlots[slotIndex] = newSlot;
-      updated = { ...block, homeSlots: newHomeSlots };
-    } else if (slotType === "work") {
-      const currentSlot = block.workSlots[slotIndex];
-      if (currentSlot) usedWorkIds.delete(currentSlot.workItemId);
-      const newSlot = pickRandomWorkTask(usedWorkIds);
-      const newWorkSlots = [...block.workSlots];
-      newWorkSlots[slotIndex] = newSlot;
-      updated = { ...block, workSlots: newWorkSlots };
-    } else {
-      const currentSlot = block.freeTimeSlots[slotIndex];
-      if (currentSlot) usedFreeTimeIds.delete(currentSlot.taskId);
-      const newSlot = pickRandomFreeTimeTask(usedFreeTimeIds);
-      const newFreeTimeSlots = [...block.freeTimeSlots];
-      newFreeTimeSlots[slotIndex] = newSlot;
-      updated = { ...block, freeTimeSlots: newFreeTimeSlots };
-    }
-    updateBlock(updated);
-  };
+    const config = data.blockSettings.find((c) => c.id === block.blockConfigId);
+    const slotCfg = config?.slots[slotIndex];
+    if (!slotCfg) return;
 
-  // === Next category for home task ===
-  const handleNextCategory = (blockId: string, slotIndex: number) => {
-    const block = data.blocks.find((b) => b.id === blockId);
-    const currentSlot = block?.homeSlots[slotIndex];
-    if (!currentSlot) return;
-    const nextIndex = currentSlot.currentCategoryIndex + 1;
-    if (nextIndex >= HOME_PRIORITY_ORDER.length) return;
-    const newSlot = pickRandomHomeTask(nextIndex);
-    const newHomeSlots = [...block.homeSlots];
-    newHomeSlots[slotIndex] = newSlot;
-    updateBlock({ ...block, homeSlots: newHomeSlots });
+    const usedIds = new Set(block.slots.filter((s): s is BlockTaskSlot => !!s).map((s) => s.taskId));
+    const current = block.slots[slotIndex];
+    if (current) usedIds.delete(current.taskId);
+
+    const newSlot = pickTask(slotCfg.typeId, usedIds, slotCfg.flagId, slotCfg.subtypeOrder);
+    const newSlots = [...block.slots];
+    newSlots[slotIndex] = newSlot;
+    updateBlock({ ...block, slots: newSlots });
   };
 
   // === Mark slot ===
-  const handleMarkSlot = (blockId: string, slotType: "home" | "work" | "freeTime", slotIndex: number, status: BlockSlotStatus) => {
-    if (status === "blocked") {
-      setBlockedReasonDialog({ blockId, slotType, slotIndex });
-      setBlockedReason("");
-      return;
-    }
-
+  const handleMarkSlot = (blockId: string, slotIndex: number, action: "complete" | "skip") => {
     const block = data.blocks.find((b) => b.id === blockId);
     if (!block) return;
+    const slot = block.slots[slotIndex];
+    if (!slot) return;
 
-    applySlotMark(block, slotType, slotIndex, status);
+    if (action === "complete") {
+      const task = getTask(slot.taskId);
+      if (task) {
+        const completeStatus = data.statuses.find((s) => s.isComplete);
+        if (completeStatus) updateTask({ ...task, statusId: completeStatus.id });
+      }
+    }
+
+    const newSlots = [...block.slots];
+    newSlots[slotIndex] = { ...slot, status: action === "complete" ? "complete" : "skipped" };
+    updateBlock({ ...block, slots: newSlots });
   };
 
-  const applySlotMark = (block: TaskBlock, slotType: "home" | "work" | "freeTime", slotIndex: number, status: BlockSlotStatus, reason?: string) => {
-    // Apply status to underlying task
-    if (slotType === "home") {
-      const slot = block.homeSlots[slotIndex];
-      if (slot) {
-        const task = data.homeTasks.find((t) => t.id === slot.taskId);
-        if (task) {
-          if (status === "complete") {
-            updateHomeTask({ ...task, status: "complete" });
-          } else if (status === "in-progress") {
-            updateHomeTask({ ...task, status: "in-progress" });
-          } else if (status === "blocked") {
-            updateHomeTask({ ...task, status: "blocked", blockedReason: reason });
-          }
+  // === Change task status directly from block ===
+  const handleTaskStatusChange = (taskId: string, statusId: string) => {
+    const task = getTask(taskId);
+    if (!task) return;
+    const newStatus = data.statuses.find((s) => s.id === statusId);
+    updateTask({ ...task, statusId });
+    // If marking complete, also mark the block slot complete
+    if (newStatus?.isComplete) {
+      data.blocks.forEach((block) => {
+        const slotIdx = block.slots.findIndex((s) => s && s.taskId === taskId);
+        if (slotIdx === -1) return;
+        const slot = block.slots[slotIdx];
+        if (slot && slot.status === "active") {
+          const newSlots = [...block.slots];
+          newSlots[slotIdx] = { ...slot, status: "complete" };
+          updateBlock({ ...block, slots: newSlots });
         }
-        const newHomeSlots = [...block.homeSlots];
-        newHomeSlots[slotIndex] = null;
-        updateBlock({ ...block, homeSlots: newHomeSlots });
-      }
-    } else if (slotType === "work") {
-      const slot = block.workSlots[slotIndex];
-      if (slot) {
-        const workItem = data.workItems.find((w) => w.id === slot.workItemId);
-        if (workItem && slot.subtaskId) {
-          const subtask = workItem.subtasks.find((s) => s.id === slot.subtaskId);
-          if (subtask) {
-            if (status === "complete") {
-              updateSubtask(workItem.id, { ...subtask, status: "complete" });
-            } else if (status === "in-progress") {
-              updateSubtask(workItem.id, { ...subtask, status: "in-progress" });
-            }
-          }
-        }
-        const newWorkSlots = [...block.workSlots];
-        newWorkSlots[slotIndex] = null;
-        updateBlock({ ...block, workSlots: newWorkSlots });
-      }
-    } else if (slotType === "freeTime") {
-      const slot = block.freeTimeSlots[slotIndex];
-      if (slot) {
-        const task = data.freeTimeTasks.find((t) => t.id === slot.taskId);
-        if (task) {
-          if (status === "complete") {
-            updateFreeTimeTask({ ...task, status: "complete" });
-          } else if (status === "in-progress") {
-            updateFreeTimeTask({ ...task, status: "in-progress" });
-          } else if (status === "blocked") {
-            updateFreeTimeTask({ ...task, status: "blocked", blockedReason: reason });
-          }
-        }
-        const newFreeTimeSlots = [...block.freeTimeSlots];
-        newFreeTimeSlots[slotIndex] = null;
-        updateBlock({ ...block, freeTimeSlots: newFreeTimeSlots });
-      }
+      });
     }
   };
 
-  const confirmBlocked = () => {
-    if (!blockedReasonDialog || !blockedReason.trim()) return;
-    const block = data.blocks.find((b) => b.id === blockedReasonDialog.blockId);
-    if (!block) return;
-    applySlotMark(block, blockedReasonDialog.slotType, blockedReasonDialog.slotIndex, "blocked", blockedReason.trim());
-    setBlockedReasonDialog(null);
+  const handleSubtaskStatusChange = (taskId: string, subtaskId: string, statusId: string) => {
+    const task = getTask(taskId);
+    if (!task) return;
+    const sub = task.subtasks.find((s) => s.id === subtaskId);
+    if (sub) updateSubtask(taskId, { ...sub, statusId });
   };
 
   // === Manual select ===
-  const openManualSelect = (blockId: string, slotType: "home" | "work" | "freeTime", slotIndex: number) => {
-    setManualSelectDialog({ blockId, slotType, slotIndex });
-    setManualSelection("");
-    setManualSubSelection("");
-  };
-
   const confirmManualSelect = () => {
     if (!manualSelectDialog || !manualSelection) return;
     const block = data.blocks.find((b) => b.id === manualSelectDialog.blockId);
     if (!block) return;
-    const slotIndex = manualSelectDialog.slotIndex;
-
-    if (manualSelectDialog.slotType === "home") {
-      const task = data.homeTasks.find((t) => t.id === manualSelection);
-      if (task) {
-        const catIdx = HOME_PRIORITY_ORDER.indexOf(task.category);
-        const newHomeSlots = [...block.homeSlots];
-        newHomeSlots[slotIndex] = { taskId: task.id, currentCategoryIndex: catIdx >= 0 ? catIdx : 4, status: "active" };
-        updateBlock({ ...block, homeSlots: newHomeSlots });
-      }
-    } else if (manualSelectDialog.slotType === "work") {
-      const newWorkSlots = [...block.workSlots];
-      newWorkSlots[slotIndex] = manualSelection
-        ? { workItemId: manualSelection, subtaskId: manualSubSelection || "", status: "active" }
-        : null;
-      updateBlock({ ...block, workSlots: newWorkSlots });
-    } else {
-      const newFreeTimeSlots = [...block.freeTimeSlots];
-      newFreeTimeSlots[slotIndex] = manualSelection ? { taskId: manualSelection, status: "active" } : null;
-      updateBlock({ ...block, freeTimeSlots: newFreeTimeSlots });
-    }
+    const newSlots = [...block.slots];
+    newSlots[manualSelectDialog.slotIndex] = {
+      taskId: manualSelection,
+      subtaskId: manualSubSelection || undefined,
+      status: "active",
+    };
+    updateBlock({ ...block, slots: newSlots });
     setManualSelectDialog(null);
   };
 
-  // === Helpers ===
-  const getHomeTaskName = (taskId: string) => data.homeTasks.find((t) => t.id === taskId)?.name || "Unknown Task";
-  const getWorkItemName = (itemId: string) => data.workItems.find((w) => w.id === itemId)?.name || "Unknown Item";
-  const getSubtaskName = (itemId: string, subtaskId: string) => {
-    const item = data.workItems.find((w) => w.id === itemId);
-    return item?.subtasks.find((s) => s.id === subtaskId)?.name || "No subtask";
-  };
-  const getFreeTimeTaskName = (taskId: string) => data.freeTimeTasks.find((t) => t.id === taskId)?.name || "Unknown Task";
-  const getFreeTimeTaskCategory = (taskId: string) => {
-    const task = data.freeTimeTasks.find((t) => t.id === taskId);
-    if (!task) return "";
-    return data.freeTimeCategories.find((c) => c.id === task.categoryId)?.name || "";
+  // === Settings: slot editing ===
+  const updateEditingSlot = (index: number, field: Partial<BlockSlotConfig>) => {
+    if (!editingConfig) return;
+    const newSlots = [...editingConfig.slots];
+    newSlots[index] = { ...newSlots[index], ...field };
+    setEditingConfig({ ...editingConfig, slots: newSlots });
   };
 
-  const isBlockEmpty = (block: TaskBlock) => 
-    (block.homeSlots?.every((s) => !s) ?? true) && 
-    (block.workSlots?.every((s) => !s) ?? true) && 
-    (block.freeTimeSlots?.every((s) => !s) ?? true);
+  const addEditingSlot = (typeId: string) => {
+    if (!editingConfig) return;
+    setEditingConfig({ ...editingConfig, slots: [...editingConfig.slots, { typeId }] });
+  };
 
-  // Clean up empty blocks
-  const activeBlocks = data.blocks.filter((b) => !isBlockEmpty(b));
-  // Also keep blocks that still have slots even if some are null
-  const displayBlocks = data.blocks;
+  const removeEditingSlot = (index: number) => {
+    if (!editingConfig) return;
+    const newSlots = [...editingConfig.slots];
+    newSlots.splice(index, 1);
+    setEditingConfig({ ...editingConfig, slots: newSlots });
+  };
+
+  const moveEditingSlot = (from: number, to: number) => {
+    if (!editingConfig) return;
+    const newSlots = [...editingConfig.slots];
+    const [removed] = newSlots.splice(from, 1);
+    newSlots.splice(to, 0, removed);
+    setEditingConfig({ ...editingConfig, slots: newSlots });
+  };
+
+  const saveEditingConfig = () => {
+    if (!editingConfig) return;
+    updateBlockTypeConfig(editingConfig);
+    setEditingConfig(null);
+  };
+
+  const handleAddNewConfig = () => {
+    if (!newConfigName.trim()) return;
+    const defaultTypeId = data.taskTypes[0]?.id || "";
+    addBlockTypeConfig({ name: newConfigName.trim(), slots: [{ typeId: defaultTypeId }] });
+    setNewConfigName("");
+  };
+
+  // === Render block section ===
+  const renderBlockSection = (config: BlockTypeConfig) => {
+    const block = data.blocks.find((b) => b.blockConfigId === config.id);
+
+    return (
+      <div key={config.id} className="space-y-4">
+        <div className="flex items-center justify-between pb-2 border-b border-sky-400/30">
+          <div className="flex items-center gap-2 font-semibold text-lg text-sky-400">
+            <Calendar className="h-5 w-5" />{config.name}
+          </div>
+          <Button onClick={() => handleGenerateBlock(config.id)} size="sm">
+            <Shuffle className="h-4 w-4 mr-2" />{block ? "Regenerate" : "Generate"}
+          </Button>
+        </div>
+
+        {!block ? (
+          <Card><CardContent className="py-8 text-center text-muted-foreground"><p className="text-sm">No block generated yet</p></CardContent></Card>
+        ) : (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">{config.name}</CardTitle>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => deleteBlock(block.id)}><Trash2 className="h-4 w-4" /></Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {block.slots.map((slot, slotIdx) => {
+                const slotCfg = config.slots[slotIdx];
+                const taskType = slotCfg ? getTaskType(slotCfg.typeId) : null;
+                const task = slot ? getTask(slot.taskId) : null;
+                const TypeIcon = taskType ? getIcon(taskType.icon) : null;
+                const flagName = getFlagName(slotCfg?.flagId);
+                const taskStatus = task ? getStatus(task.statusId) : null;
+                const isDone = slot?.status === "complete" || slot?.status === "skipped";
+
+                return (
+                  <div key={slotIdx} className={`rounded-lg border p-3 space-y-2 transition-opacity ${isDone ? "opacity-50 border-border" : "border-border"}`}>
+                    {/* Slot header: type icon + name, flag badge, slot status */}
+                    <div className="flex items-center gap-2">
+                      {TypeIcon && <TypeIcon className="h-4 w-4 shrink-0" style={{ color: taskType?.color }} />}
+                      <span className="text-xs font-semibold text-muted-foreground">{taskType?.name || "Unknown"}</span>
+                      {flagName && (
+                        <Badge variant="outline" className="text-xs gap-1">
+                          <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: getFlagColor(slotCfg?.flagId) }} />
+                          {flagName}
+                        </Badge>
+                      )}
+                      {isDone && <Badge variant="secondary" className="text-xs ml-auto capitalize">{slot?.status}</Badge>}
+                    </div>
+
+                    {!slot || !task ? (
+                      <p className="text-sm text-muted-foreground italic">No task available</p>
+                    ) : (
+                      <>
+                        {/* Task card */}
+                        <div className="rounded-md border border-border bg-muted/20 p-2.5 space-y-2">
+                          {/* Task name + status select */}
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium leading-snug">{task.name}</p>
+                              {task.description && (
+                                <p className="text-xs mt-0.5 truncate" style={{ color: taskStatus?.color ?? "inherit" }}>{task.description}</p>
+                              )}
+                            </div>
+                            {/* Status select */}
+                            <Select value={task.statusId} onValueChange={(v) => v && handleTaskStatusChange(task.id, v)}>
+                              <SelectTrigger className="h-6 w-auto min-w-[90px] text-xs shrink-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: taskStatus?.color }} />
+                                  <span className="truncate">{taskStatus?.name}</span>
+                                </div>
+                              </SelectTrigger>
+                              <SelectContent>
+                                {data.statuses.map((s) => (
+                                  <SelectItem key={s.id} value={s.id}>
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                                      {s.name}
+                                    </div>
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+
+                          {/* Flags */}
+                          {(task.flagIds ?? []).length > 0 && (
+                            <div className="flex flex-wrap gap-1">
+                              {(task.flagIds ?? []).map((fid) => {
+                                const flag = data.flags.find((f) => f.id === fid);
+                                return flag ? (
+                                  <span key={fid} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={{ backgroundColor: flag.color + "30", color: flag.color, border: `1px solid ${flag.color}60` }}>
+                                    {flag.name}
+                                  </span>
+                                ) : null;
+                              })}
+                            </div>
+                          )}
+
+                          {/* Subtasks */}
+                          {task.subtasks.length > 0 && (
+                            <div className="space-y-1 pt-1 border-t border-border/50">
+                              {task.subtasks.map((sub) => {
+                                const subStatus = getStatus(sub.statusId);
+                                return (
+                                  <div key={sub.id} className="flex items-center justify-between gap-2 rounded bg-muted/30 px-2 py-1">
+                                    <span className={`text-xs flex-1 min-w-0 truncate ${subStatus?.isComplete ? "line-through text-muted-foreground" : ""}`}>{sub.name}</span>
+                                    <Select value={sub.statusId} onValueChange={(v) => v && handleSubtaskStatusChange(task.id, sub.id, v)}>
+                                      <SelectTrigger className="h-5 w-auto min-w-[80px] text-xs shrink-0">
+                                        <div className="flex items-center gap-1">
+                                          <span className="inline-block w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: subStatus?.color }} />
+                                          <span className="truncate">{subStatus?.name}</span>
+                                        </div>
+                                      </SelectTrigger>
+                                      <SelectContent>
+                                        {data.statuses.map((s) => (
+                                          <SelectItem key={s.id} value={s.id}>
+                                            <div className="flex items-center gap-1.5">
+                                              <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+                                              {s.name}
+                                            </div>
+                                          </SelectItem>
+                                        ))}
+                                      </SelectContent>
+                                    </Select>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Slot actions */}
+                        {!isDone && (
+                          <div className="flex gap-1.5 flex-wrap">
+                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleMarkSlot(block.id, slotIdx, "complete")}>
+                              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />Done
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleMarkSlot(block.id, slotIdx, "skip")}>
+                              <SkipForward className="h-3.5 w-3.5 mr-1" />Skip
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => handleReroll(block.id, slotIdx)}>
+                              <Dices className="h-3.5 w-3.5 mr-1" />Reroll
+                            </Button>
+                            <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => {
+                              setManualSelectDialog({ blockId: block.id, slotIndex: slotIdx, typeId: slotCfg?.typeId || "", flagId: slotCfg?.flagId });
+                              setManualSelection("");
+                              setManualSubSelection("");
+                            }}>
+                              <Replace className="h-3.5 w-3.5 mr-1" />Pick
+                            </Button>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+    );
+  };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Generate Block</h1>
-        <Button onClick={handleGenerateBlock} disabled={data.blocks.length >= 3}>
-          <Shuffle className="h-4 w-4 mr-2" />
-          Generate Block ({data.blocks.length}/3)
+        <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
+          <Settings className="h-4 w-4 mr-2" />Manage Block Types
         </Button>
       </div>
 
-      {displayBlocks.length === 0 && (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            <Shuffle className="h-12 w-12 mx-auto mb-4 opacity-30" />
-            <p className="text-lg font-medium">No blocks generated yet</p>
-            <p className="text-sm mt-1">Click &quot;Generate Block&quot; to create a task block</p>
-          </CardContent>
-        </Card>
+
+      {data.blockSettings.length === 0 && (
+        <Card><CardContent className="py-8 text-center text-muted-foreground"><p className="text-sm">No block types configured. Open &quot;Manage Block Types&quot; to add one.</p></CardContent></Card>
       )}
 
-      {displayBlocks.map((block, idx) => (
-        <Card key={block.id} className="relative">
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">Block {idx + 1}</CardTitle>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-destructive"
-                onClick={() => deleteBlock(block.id)}
-              >
-                <Trash2 className="h-4 w-4" />
+      {data.blockSettings.map((config) => renderBlockSection(config))}
+
+      {/* Manage Block Types Dialog */}
+      <Dialog open={showSettings} onOpenChange={(open) => { if (!open) { setShowSettings(false); setEditingConfig(null); } }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto" style={{ maxWidth: "min(900px, calc(100vw - 2rem))" }}>
+          <DialogHeader><DialogTitle>Manage Block Types</DialogTitle></DialogHeader>
+          <div className="space-y-6">
+            {data.blockSettings.map((config) => (
+              <div key={config.id} className="rounded-lg border border-border p-3 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-4 w-4 text-sky-400" />
+                    <span className="font-semibold text-sm">{config.name}</span>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingConfig(editingConfig?.id === config.id ? null : JSON.parse(JSON.stringify(config)))}><Pencil className="h-3.5 w-3.5" /></Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => deleteBlockTypeConfig(config.id)}><Trash2 className="h-3.5 w-3.5" /></Button>
+                  </div>
+                </div>
+
+                {editingConfig?.id === config.id && (
+                  <div className="space-y-3 pt-2 border-t border-border">
+                    <div>
+                      <Label className="text-xs">Name</Label>
+                      <Input className="h-7 text-xs mt-1" value={editingConfig.name} onChange={(e) => setEditingConfig({ ...editingConfig, name: e.target.value })} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Slots</Label>
+                      {editingConfig.slots.map((cfg, idx) => {
+                        const tt = getTaskType(cfg.typeId);
+                        const ttSubtypes = tt ? [...tt.subtypes].sort((a, b) => a.priority - b.priority) : [];
+                        // Build active subtype order: cfg.subtypeOrder if set, else default sort
+                        const activeOrder: string[] = cfg.subtypeOrder && cfg.subtypeOrder.length > 0
+                          ? cfg.subtypeOrder
+                          : ttSubtypes.map((s) => s.id);
+                        const moveSubtypeInSlot = (stIdx: number, dir: -1 | 1) => {
+                          const newOrder = [...activeOrder];
+                          const target = stIdx + dir;
+                          if (target < 0 || target >= newOrder.length) return;
+                          [newOrder[stIdx], newOrder[target]] = [newOrder[target], newOrder[stIdx]];
+                          updateEditingSlot(idx, { subtypeOrder: newOrder });
+                        };
+                        return (
+                          <div key={idx} className="rounded border border-border bg-muted/20 px-2 py-2 space-y-2">
+                            <div className="flex items-center gap-2">
+                              <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                              <span className="text-xs text-muted-foreground w-4">{idx + 1}.</span>
+                              <Select value={cfg.typeId} onValueChange={(v) => v && updateEditingSlot(idx, { typeId: v, subtypeOrder: undefined })}>
+                                <SelectTrigger className="h-6 text-xs w-[120px]">
+                                  <span>{tt?.name ?? <SelectValue />}</span>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  {data.taskTypes.map((t) => (
+                                    <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <Select value={cfg.flagId ?? "__none__"} onValueChange={(v) => updateEditingSlot(idx, { flagId: (v === "__none__" || !v) ? undefined : v ?? undefined })}>
+                                <SelectTrigger className="h-6 text-xs flex-1">
+                                  <div className="flex items-center gap-1.5">
+                                    {cfg.flagId ? (
+                                      <>
+                                        <span className="inline-block w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: getFlagColor(cfg.flagId) }} />
+                                        <span className="truncate">{getFlagName(cfg.flagId)}</span>
+                                      </>
+                                    ) : (
+                                      <span className="text-muted-foreground">No flag</span>
+                                    )}
+                                  </div>
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__none__">No flag filter</SelectItem>
+                                  {data.flags.map((f) => (
+                                    <SelectItem key={f.id} value={f.id}>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="inline-block w-2 h-2 rounded-full" style={{ backgroundColor: f.color }} />{f.name}
+                                      </div>
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                              <div className="flex gap-0.5 shrink-0">
+                                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === 0} onClick={() => moveEditingSlot(idx, idx - 1)}><span className="text-xs">↑</span></Button>
+                                <Button variant="ghost" size="icon" className="h-6 w-6" disabled={idx === editingConfig.slots.length - 1} onClick={() => moveEditingSlot(idx, idx + 1)}><span className="text-xs">↓</span></Button>
+                                <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={() => removeEditingSlot(idx)}><Trash2 className="h-3 w-3" /></Button>
+                              </div>
+                            </div>
+                            {ttSubtypes.length > 1 && (
+                              <div className="pl-9 space-y-1">
+                                <p className="text-xs text-muted-foreground">Roll priority (top = first tried):</p>
+                                {activeOrder.map((stId, stIdx) => {
+                                  const st = ttSubtypes.find((s) => s.id === stId);
+                                  if (!st) return null;
+                                  return (
+                                    <div key={stId} className="flex items-center gap-1.5 rounded bg-muted/40 px-2 py-0.5">
+                                      <span className="text-xs text-muted-foreground w-3">{stIdx + 1}.</span>
+                                      <span className="text-xs flex-1">{st.name}</span>
+                                      <Button variant="ghost" size="icon" className="h-5 w-5" disabled={stIdx === 0} onClick={() => moveSubtypeInSlot(stIdx, -1)}><span className="text-xs">↑</span></Button>
+                                      <Button variant="ghost" size="icon" className="h-5 w-5" disabled={stIdx === activeOrder.length - 1} onClick={() => moveSubtypeInSlot(stIdx, 1)}><span className="text-xs">↓</span></Button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div className="flex gap-2 flex-wrap">
+                      {data.taskTypes.map((t) => (
+                        <Button key={t.id} variant="outline" size="sm" className="h-6 text-xs" onClick={() => addEditingSlot(t.id)}>
+                          <Plus className="h-3 w-3 mr-1" />{t.name}
+                        </Button>
+                      ))}
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => setEditingConfig(null)}>Cancel</Button>
+                      <Button size="sm" className="h-7 text-xs" onClick={saveEditingConfig}>Save</Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <div className="rounded-lg border border-dashed border-border p-3 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">New Block Type</p>
+              <Input className="h-7 text-xs" placeholder="Name (e.g. Weekend, Morning...)" value={newConfigName} onChange={(e) => setNewConfigName(e.target.value)} />
+              <Button size="sm" className="h-7 text-xs" disabled={!newConfigName.trim()} onClick={handleAddNewConfig}>
+                <Plus className="h-3 w-3 mr-1" />Add Block Type
               </Button>
             </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Home Task Slots */}
-            {block.homeSlots.map((slot, slotIdx) => (
-              <SlotCard
-                key={`home-${slotIdx}`}
-                icon={<Home className="h-4 w-4" />}
-                label={`Home Task ${slotIdx + 1}`}
-                isEmpty={!slot}
-                taskName={slot ? getHomeTaskName(slot.taskId) : undefined}
-                taskMeta={
-                  slot
-                    ? PRIORITY_LABELS[HOME_PRIORITY_ORDER[slot.currentCategoryIndex]] || "Misc"
-                    : undefined
-                }
-                onReroll={() => handleReroll(block.id, "home", slotIdx)}
-                onManualSelect={() => openManualSelect(block.id, "home", slotIdx)}
-                onMarkComplete={() => handleMarkSlot(block.id, "home", slotIdx, "complete")}
-                onMarkInProgress={() => handleMarkSlot(block.id, "home", slotIdx, "in-progress")}
-                onMarkBlocked={() => handleMarkSlot(block.id, "home", slotIdx, "blocked")}
-                extraAction={
-                  slot &&
-                  slot.currentCategoryIndex < HOME_PRIORITY_ORDER.length - 1 ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="h-8 text-xs"
-                      onClick={() => handleNextCategory(block.id, slotIdx)}
-                    >
-                      <ChevronRight className="h-3.5 w-3.5 mr-1" />
-                      Next Category
-                    </Button>
-                  ) : undefined
-                }
-              />
-            ))}
-
-            {/* Work Task Slots */}
-            {block.workSlots.map((slot, slotIdx) => (
-              <SlotCard
-                key={`work-${slotIdx}`}
-                icon={<Briefcase className="h-4 w-4" />}
-                label={`Work Task ${slotIdx + 1}`}
-                isEmpty={!slot}
-                taskName={
-                  slot
-                    ? `${getWorkItemName(slot.workItemId)}${slot.subtaskId ? ` → ${getSubtaskName(slot.workItemId, slot.subtaskId)}` : ""}`
-                    : undefined
-                }
-                onReroll={() => handleReroll(block.id, "work", slotIdx)}
-                onManualSelect={() => openManualSelect(block.id, "work", slotIdx)}
-                onMarkComplete={() => handleMarkSlot(block.id, "work", slotIdx, "complete")}
-                onMarkInProgress={() => handleMarkSlot(block.id, "work", slotIdx, "in-progress")}
-                onMarkBlocked={() => handleMarkSlot(block.id, "work", slotIdx, "blocked")}
-              />
-            ))}
-
-            {/* Free Time Slot */}
-            {block.freeTimeSlots.map((slot, slotIdx) => (
-              <SlotCard
-                key={`freetime-${slotIdx}`}
-                icon={<Gamepad2 className="h-4 w-4" />}
-                label="Free Time Task"
-                isEmpty={!slot}
-                taskName={slot ? getFreeTimeTaskName(slot.taskId) : undefined}
-                taskMeta={slot ? getFreeTimeTaskCategory(slot.taskId) : undefined}
-                onReroll={() => handleReroll(block.id, "freeTime", slotIdx)}
-                onManualSelect={() => openManualSelect(block.id, "freeTime", slotIdx)}
-                onMarkComplete={() => handleMarkSlot(block.id, "freeTime", slotIdx, "complete")}
-                onMarkInProgress={() => handleMarkSlot(block.id, "freeTime", slotIdx, "in-progress")}
-                onMarkBlocked={() => handleMarkSlot(block.id, "freeTime", slotIdx, "blocked")}
-              />
-            ))}
-          </CardContent>
-        </Card>
-      ))}
-
-      {/* Blocked Reason Dialog */}
-      <Dialog open={!!blockedReasonDialog} onOpenChange={(open) => !open && setBlockedReasonDialog(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Blocked Reason</DialogTitle>
-          </DialogHeader>
-          <div>
-            <Label>Why is this task blocked?</Label>
-            <Textarea value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setBlockedReasonDialog(null)}>Cancel</Button>
-            <Button onClick={confirmBlocked} disabled={!blockedReason.trim()}>Confirm</Button>
+            <Button onClick={() => { setShowSettings(false); setEditingConfig(null); }}>Done</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -534,157 +573,49 @@ export default function GenerateBlockPage() {
       {/* Manual Select Dialog */}
       <Dialog open={!!manualSelectDialog} onOpenChange={(open) => !open && setManualSelectDialog(null)}>
         <DialogContent>
-          <DialogHeader>
-            <DialogTitle>
-              Select {manualSelectDialog?.slotType === "home" ? "Home" : manualSelectDialog?.slotType === "work" ? "Work" : "Free Time"} Task
-            </DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>Select Task</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            {manualSelectDialog?.slotType === "home" && (
-              <div>
-                <Label>Home Task</Label>
-                <Select value={manualSelection} onValueChange={(v) => setManualSelection(v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Select a task..." /></SelectTrigger>
-                  <SelectContent>
-                    {data.homeTasks
-                      .filter((t) => t.status !== "complete")
-                      .map((t) => (
-                        <SelectItem key={t.id} value={t.id}>
-                          [{t.category}] {t.name}
-                        </SelectItem>
-                      ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {manualSelectDialog?.slotType === "work" && (
-              <>
+            <div>
+              <Label>Task</Label>
+              <Select value={manualSelection} onValueChange={(v) => { setManualSelection(v || ""); setManualSubSelection(""); }}>
+                <SelectTrigger><SelectValue placeholder="Select a task..." /></SelectTrigger>
+                <SelectContent>
+                  {data.tasks
+                    .filter((t) => t.typeId === manualSelectDialog?.typeId)
+                    .filter((t) => { const s = getStatus(t.statusId); return s && !s.isComplete; })
+                    .sort((a, b) => a.priority - b.priority)
+                    .map((t) => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {manualSelection && (() => {
+              const task = getTask(manualSelection);
+              const subs = task?.subtasks.filter((s) => { const st = getStatus(s.statusId); return st && !st.isComplete; }) || [];
+              if (subs.length === 0) return null;
+              return (
                 <div>
-                  <Label>Work Item</Label>
-                  <Select value={manualSelection} onValueChange={(v) => { setManualSelection(v ?? ""); setManualSubSelection(""); }}>
-                    <SelectTrigger><SelectValue placeholder="Select a work item..." /></SelectTrigger>
+                  <Label>Subtask (optional)</Label>
+                  <Select value={manualSubSelection || "__none__"} onValueChange={(v) => setManualSubSelection(!v || v === "__none__" ? "" : v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      {data.workItems
-                        .filter((w) => w.section === "active")
-                        .map((w) => (
-                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                        ))}
+                      <SelectItem value="__none__">No subtask</SelectItem>
+                      {subs.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
-                {manualSelection && (
-                  <div>
-                    <Label>Subtask</Label>
-                    <Select value={manualSubSelection} onValueChange={(v) => setManualSubSelection(v ?? "")}>
-                      <SelectTrigger><SelectValue placeholder="Select a subtask..." /></SelectTrigger>
-                      <SelectContent>
-                        {data.workItems
-                          .find((w) => w.id === manualSelection)
-                          ?.subtasks.filter((s) => s.status !== "complete")
-                          .map((s) => (
-                            <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-              </>
-            )}
-            {manualSelectDialog?.slotType === "freeTime" && (
-              <div>
-                <Label>Free Time Task</Label>
-                <Select value={manualSelection} onValueChange={(v) => setManualSelection(v ?? "")}>
-                  <SelectTrigger><SelectValue placeholder="Select a task..." /></SelectTrigger>
-                  <SelectContent>
-                    {data.freeTimeTasks
-                      .filter((t) => t.section === "active")
-                      .map((t) => {
-                        const catName = data.freeTimeCategories.find((c) => c.id === t.categoryId)?.name || "";
-                        return (
-                          <SelectItem key={t.id} value={t.id}>
-                            [{catName}] {t.name}
-                          </SelectItem>
-                        );
-                      })}
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
+              );
+            })()}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setManualSelectDialog(null)}>Cancel</Button>
-            <Button onClick={confirmManualSelect} disabled={!manualSelection}>Select</Button>
+            <Button onClick={confirmManualSelect} disabled={!manualSelection}>Confirm</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-}
-
-function SlotCard({
-  icon,
-  label,
-  isEmpty,
-  taskName,
-  taskMeta,
-  onReroll,
-  onManualSelect,
-  onMarkComplete,
-  onMarkInProgress,
-  onMarkBlocked,
-  extraAction,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  isEmpty: boolean;
-  taskName?: string;
-  taskMeta?: string;
-  onReroll: () => void;
-  onManualSelect: () => void;
-  onMarkComplete: () => void;
-  onMarkInProgress: () => void;
-  onMarkBlocked: () => void;
-  extraAction?: React.ReactNode;
-}) {
-  return (
-    <div className="rounded-lg border border-border p-4 bg-muted/20">
-      <div className="flex items-center gap-2 mb-2">
-        {icon}
-        <span className="text-sm font-semibold">{label}</span>
-        {taskMeta && (
-          <Badge variant="outline" className="text-xs">{taskMeta}</Badge>
-        )}
-      </div>
-      {isEmpty ? (
-        <p className="text-sm text-muted-foreground italic">No task available</p>
-      ) : (
-        <>
-          <p className="text-sm font-medium mb-3">{taskName}</p>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onReroll}>
-              <Dices className="h-3.5 w-3.5 mr-1" />
-              Reroll
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs" onClick={onManualSelect}>
-              <Replace className="h-3.5 w-3.5 mr-1" />
-              Select
-            </Button>
-            <Button variant="default" size="sm" className="h-8 text-xs bg-green-600 hover:bg-green-700 text-white" onClick={onMarkComplete}>
-              <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
-              Complete
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs text-blue-600 border-blue-300" onClick={onMarkInProgress}>
-              <Clock className="h-3.5 w-3.5 mr-1" />
-              In Progress
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 text-xs text-red-600 border-red-300" onClick={onMarkBlocked}>
-              <Ban className="h-3.5 w-3.5 mr-1" />
-              Blocked
-            </Button>
-            {extraAction}
-          </div>
-        </>
-      )}
     </div>
   );
 }

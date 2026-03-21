@@ -1,15 +1,15 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useAppContext } from "@/contexts/AppContext";
-import type { HomeTask, HomeTaskCategory, RepeatingType, TaskStatus } from "@/types";
+import type { TaskType } from "@/types";
+import { getIcon, ICON_NAMES, ICON_MAP } from "@/lib/icons";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -17,13 +17,6 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -34,358 +27,177 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  Plus,
-  Pencil,
-  Trash2,
-  RotateCcw,
-  AlertCircle,
-  Clock,
-  CalendarDays,
-  Star,
-  List,
-  Briefcase,
-  CheckSquare,
-} from "lucide-react";
+import { Plus, Pencil, Trash2, LayoutGrid } from "lucide-react";
 
-const REPEATING_ORDER: RepeatingType[] = ["weekly", "biweekly", "bimonthly", "monthly", "quarterly", "yearly"];
-const CATEGORY_LABELS: Record<HomeTaskCategory, string> = {
-  scheduled: "Scheduled Tasks",
-  priority: "Priority Tasks",
-  repeating: "Repeating Tasks",
-  freelance: "Freelance Work",
-  misc: "Misc Tasks",
-};
-const CATEGORY_ICONS: Record<HomeTaskCategory, React.ReactNode> = {
-  scheduled: <CalendarDays className="h-4 w-4" />,
-  priority: <Star className="h-4 w-4" />,
-  repeating: <RotateCcw className="h-4 w-4" />,
-  freelance: <Briefcase className="h-4 w-4" />,
-  misc: <List className="h-4 w-4" />,
-};
+const PRESET_COLORS = [
+  "#f97316", "#ef4444", "#eab308", "#22c55e", "#14b8a6",
+  "#3b82f6", "#8b5cf6", "#ec4899", "#64748b", "#a16207",
+];
 
-const STATUS_COLORS: Record<TaskStatus, string> = {
-  incomplete: "bg-secondary text-secondary-foreground",
-  "in-progress": "bg-blue-900/50 text-blue-300",
-  blocked: "bg-red-900/50 text-red-300",
-  complete: "bg-green-900/50 text-green-300",
-};
+export default function TaskTypesPage() {
+  const { data, addTaskType, updateTaskType, deleteTaskType } = useAppContext();
 
-type FormData = {
-  name: string;
-  description: string;
-  category: HomeTaskCategory;
-  repeatingType: RepeatingType;
-  scheduledDate: string;
-  status: TaskStatus;
-  blockedReason: string;
-  weekendOnly: boolean;
-};
-
-const emptyForm: FormData = {
-  name: "",
-  description: "",
-  category: "misc",
-  repeatingType: "weekly",
-  scheduledDate: "",
-  status: "incomplete",
-  blockedReason: "",
-  weekendOnly: false,
-};
-
-export default function HomeTasksPage() {
-  const { data, addHomeTask, updateHomeTask, deleteHomeTask, resetRepeating, clearCompletedHomeTasks } = useAppContext();
   const [dialogOpen, setDialogOpen] = useState(false);
-  const [editingTask, setEditingTask] = useState<HomeTask | null>(null);
-  const [form, setForm] = useState<FormData>(emptyForm);
-  const [deleteTarget, setDeleteTarget] = useState<HomeTask | null>(null);
-  const [blockedDialogTask, setBlockedDialogTask] = useState<HomeTask | null>(null);
-  const [blockedReason, setBlockedReason] = useState("");
+  const [editingType, setEditingType] = useState<TaskType | null>(null);
+  const [form, setForm] = useState({ name: "", icon: "Home", color: PRESET_COLORS[0] });
+  const [deleteTarget, setDeleteTarget] = useState<TaskType | null>(null);
 
   const openAdd = () => {
-    setEditingTask(null);
-    setForm(emptyForm);
+    setEditingType(null);
+    setForm({ name: "", icon: "Home", color: PRESET_COLORS[0] });
     setDialogOpen(true);
   };
 
-  const openEdit = (task: HomeTask) => {
-    setEditingTask(task);
-    setForm({
-      name: task.name,
-      description: task.description,
-      category: task.category,
-      repeatingType: task.repeatingType || "weekly",
-      scheduledDate: task.scheduledDate || "",
-      status: task.status,
-      blockedReason: task.blockedReason || "",
-      weekendOnly: task.weekendOnly ?? false,
-    });
+  const openEdit = (type: TaskType) => {
+    setEditingType(type);
+    setForm({ name: type.name, icon: type.icon, color: type.color });
     setDialogOpen(true);
   };
 
   const handleSave = () => {
     if (!form.name.trim()) return;
-    const taskData = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      category: form.category,
-      repeatingType: form.category === "repeating" ? form.repeatingType : undefined,
-      scheduledDate: form.category === "scheduled" ? form.scheduledDate : undefined,
-      status: form.status,
-      blockedReason: form.status === "blocked" ? form.blockedReason : undefined,
-      weekendOnly: form.weekendOnly,
-    };
-    if (editingTask) {
-      updateHomeTask({ ...taskData, id: editingTask.id });
+    if (editingType) {
+      updateTaskType({ ...editingType, name: form.name.trim(), icon: form.icon, color: form.color });
     } else {
-      addHomeTask(taskData);
+      addTaskType({ name: form.name.trim(), icon: form.icon, color: form.color, subtypes: [{ id: crypto.randomUUID(), name: "General", priority: 0 }] });
     }
     setDialogOpen(false);
   };
 
-  const handleStatusChange = (task: HomeTask, status: TaskStatus) => {
-    if (status === "blocked") {
-      setBlockedDialogTask(task);
-      setBlockedReason(task.blockedReason || "");
-      return;
-    }
-    updateHomeTask({ ...task, status, blockedReason: undefined });
-  };
-
-  const confirmBlocked = () => {
-    if (blockedDialogTask && blockedReason.trim()) {
-      updateHomeTask({ ...blockedDialogTask, status: "blocked", blockedReason: blockedReason.trim() });
-      setBlockedDialogTask(null);
-      setBlockedReason("");
-    }
-  };
-
-  const tasksByCategory = (category: HomeTaskCategory) =>
-    data.homeTasks.filter((t) => t.category === category);
-
-  const repeatingByType = (type: RepeatingType) =>
-    data.homeTasks.filter((t) => t.category === "repeating" && t.repeatingType === type);
+  const getTaskCount = (typeId: string) => data.tasks.filter((t) => t.typeId === typeId).length;
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Home Tasks</h1>
-        <div className="flex gap-2">
-          {data.homeTasks.some((t) => t.status === "complete") && (
-            <Button variant="outline" onClick={clearCompletedHomeTasks}>
-              <CheckSquare className="h-4 w-4 mr-2" />
-              Clear Completed
-            </Button>
-          )}
-          <Button onClick={openAdd}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Task
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold">Task Types</h1>
+        <Button size="sm" onClick={openAdd}>
+          <Plus className="h-4 w-4 mr-2" />
+          New Type
+        </Button>
       </div>
 
-      {/* Reset Buttons */}
-      <div className="flex flex-wrap gap-2">
-        {REPEATING_ORDER.map((type) => (
-          <Button key={type} variant="outline" size="sm" onClick={() => resetRepeating(type)}>
-            <RotateCcw className="h-3 w-3 mr-1" />
-            Reset {type.charAt(0).toUpperCase() + type.slice(1)}
-          </Button>
-        ))}
-      </div>
+      <p className="text-sm text-muted-foreground">
+        Create task types to organize your tasks. Click a type to view and manage its tasks.
+      </p>
 
-      {/* Scheduled Section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            {CATEGORY_ICONS.scheduled}
-            {CATEGORY_LABELS.scheduled}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {tasksByCategory("scheduled").length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">No scheduled tasks</p>
-          ) : (
-            <div className="space-y-2">
-              {tasksByCategory("scheduled").map((task) => (
-                <TaskRow key={task.id} task={task} onEdit={openEdit} onDelete={setDeleteTarget} onStatusChange={handleStatusChange} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      {data.taskTypes.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            <LayoutGrid className="h-8 w-8 mx-auto mb-3 opacity-40" />
+            <p className="text-sm">No task types yet. Create one to get started.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {data.taskTypes.map((type) => {
+            const Icon = getIcon(type.icon);
+            const count = getTaskCount(type.id);
+            const completedCount = data.tasks.filter((t) => {
+              if (t.typeId !== type.id) return false;
+              const status = data.statuses.find((s) => s.id === t.statusId);
+              return status?.isComplete;
+            }).length;
 
-      {/* Priority Section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            {CATEGORY_ICONS.priority}
-            {CATEGORY_LABELS.priority}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {tasksByCategory("priority").length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">No priority tasks</p>
-          ) : (
-            <div className="space-y-2">
-              {tasksByCategory("priority").map((task) => (
-                <TaskRow key={task.id} task={task} onEdit={openEdit} onDelete={setDeleteTarget} onStatusChange={handleStatusChange} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Repeating Section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            {CATEGORY_ICONS.repeating}
-            {CATEGORY_LABELS.repeating}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {REPEATING_ORDER.map((type) => {
-            const tasks = repeatingByType(type);
             return (
-              <div key={type}>
-                <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  {type.charAt(0).toUpperCase() + type.slice(1)}
-                </h3>
-                {tasks.length === 0 ? (
-                  <p className="text-sm text-muted-foreground italic">No {type} tasks</p>
-                ) : (
-                  <div className="space-y-2">
-                    {tasks.map((task) => (
-                      <TaskRow key={task.id} task={task} onEdit={openEdit} onDelete={setDeleteTarget} onStatusChange={handleStatusChange} />
-                    ))}
+              <Card key={type.id} className="group relative overflow-hidden">
+                <div className="absolute top-0 left-0 right-0 h-1" style={{ backgroundColor: type.color }} />
+                <CardContent className="pt-5 pb-4">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="w-10 h-10 rounded-lg flex items-center justify-center"
+                        style={{ backgroundColor: type.color + "20" }}
+                      >
+                        <Icon className="h-5 w-5" style={{ color: type.color }} />
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-sm">{type.name}</h3>
+                        <p className="text-xs text-muted-foreground">
+                          {count} {count === 1 ? "task" : "tasks"}
+                          {completedCount > 0 && ` · ${completedCount} done`}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEdit(type)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" onClick={() => setDeleteTarget(type)}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
                   </div>
-                )}
-              </div>
+                  <Link
+                    href={`/tasks/${type.id}`}
+                    className="block w-full text-center rounded-md border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors"
+                  >
+                    View Tasks →
+                  </Link>
+                </CardContent>
+              </Card>
             );
           })}
-        </CardContent>
-      </Card>
-
-      {/* Freelance Work Section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            {CATEGORY_ICONS.freelance}
-            {CATEGORY_LABELS.freelance}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {tasksByCategory("freelance").length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">No freelance tasks</p>
-          ) : (
-            <div className="space-y-2">
-              {tasksByCategory("freelance").map((task) => (
-                <TaskRow key={task.id} task={task} onEdit={openEdit} onDelete={setDeleteTarget} onStatusChange={handleStatusChange} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Misc Section */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            {CATEGORY_ICONS.misc}
-            {CATEGORY_LABELS.misc}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {tasksByCategory("misc").length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">No misc tasks</p>
-          ) : (
-            <div className="space-y-2">
-              {tasksByCategory("misc").map((task) => (
-                <TaskRow key={task.id} task={task} onEdit={openEdit} onDelete={setDeleteTarget} onStatusChange={handleStatusChange} />
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      )}
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingTask ? "Edit Task" : "Add Home Task"}</DialogTitle>
+            <DialogTitle>{editingType ? "Edit Task Type" : "New Task Type"}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
             <div>
               <Label>Name</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-            </div>
-            <div>
-              <Label>Description</Label>
-              <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-            </div>
-            <div>
-              <Label>Category</Label>
-              <Select value={form.category} onValueChange={(v) => setForm({ ...form, category: v as HomeTaskCategory })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="scheduled">Scheduled</SelectItem>
-                  <SelectItem value="priority">Priority</SelectItem>
-                  <SelectItem value="repeating">Repeating</SelectItem>
-                  <SelectItem value="freelance">Freelance Work</SelectItem>
-                  <SelectItem value="misc">Misc</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.category === "repeating" && (
-              <div>
-                <Label>Repeating Type</Label>
-                <Select value={form.repeatingType} onValueChange={(v) => setForm({ ...form, repeatingType: v as RepeatingType })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                    <SelectItem value="biweekly">Biweekly</SelectItem>
-                    <SelectItem value="bimonthly">Bimonthly</SelectItem>
-                    <SelectItem value="monthly">Monthly</SelectItem>
-                    <SelectItem value="quarterly">Quarterly</SelectItem>
-                    <SelectItem value="yearly">Yearly</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
-            {form.category === "scheduled" && (
-              <div>
-                <Label>Scheduled Date</Label>
-                <Input type="date" value={form.scheduledDate} onChange={(e) => setForm({ ...form, scheduledDate: e.target.value })} />
-              </div>
-            )}
-            <div>
-              <Label>Status</Label>
-              <Select value={form.status} onValueChange={(v) => setForm({ ...form, status: v as TaskStatus })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="incomplete">Incomplete</SelectItem>
-                  <SelectItem value="in-progress">In Progress</SelectItem>
-                  <SelectItem value="blocked">Blocked</SelectItem>
-                  <SelectItem value="complete">Complete</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            {form.status === "blocked" && (
-              <div>
-                <Label>Blocked Reason</Label>
-                <Textarea value={form.blockedReason} onChange={(e) => setForm({ ...form, blockedReason: e.target.value })} />
-              </div>
-            )}
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="weekendOnly"
-                checked={form.weekendOnly}
-                onCheckedChange={(checked) => setForm({ ...form, weekendOnly: checked === true })}
+              <Input
+                value={form.name}
+                onChange={(e) => setForm({ ...form, name: e.target.value })}
+                placeholder="e.g. Home Tasks, Work, Hobbies..."
+                onKeyDown={(e) => e.key === "Enter" && handleSave()}
               />
-              <Label htmlFor="weekendOnly" className="text-sm font-normal cursor-pointer">
-                Weekend Only (higher priority on weekends, excluded on weekdays)
-              </Label>
+            </div>
+            <div>
+              <Label>Icon</Label>
+              <div className="flex flex-wrap gap-2 mt-2 max-h-32 overflow-y-auto rounded border border-border p-2">
+                {ICON_NAMES.map((name) => {
+                  const Ic = ICON_MAP[name];
+                  return (
+                    <button
+                      key={name}
+                      onClick={() => setForm({ ...form, icon: name })}
+                      className={`w-8 h-8 rounded flex items-center justify-center transition-colors ${form.icon === name ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"}`}
+                      title={name}
+                    >
+                      <Ic className="h-4 w-4" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div>
+              <Label>Color</Label>
+              <div className="flex items-center gap-3 mt-2">
+                <div className="flex flex-wrap gap-2">
+                  {PRESET_COLORS.map((color) => (
+                    <button
+                      key={color}
+                      onClick={() => setForm({ ...form, color })}
+                      className={`w-7 h-7 rounded-full transition-transform ${form.color === color ? "scale-125 ring-2 ring-offset-2 ring-offset-background ring-white" : "hover:scale-110"}`}
+                      style={{ backgroundColor: color }}
+                    />
+                  ))}
+                </div>
+                <input
+                  type="color"
+                  value={form.color}
+                  onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent"
+                />
+              </div>
+              <div className="mt-3 flex items-center gap-2">
+                {(() => { const Ic = getIcon(form.icon); return <Ic className="h-5 w-5" style={{ color: form.color }} />; })()}
+                <span className="text-sm font-medium">{form.name || "Preview"}</span>
+              </div>
             </div>
           </div>
           <DialogFooter>
@@ -399,103 +211,19 @@ export default function HomeTasksPage() {
       <AlertDialog open={!!deleteTarget} onOpenChange={(open) => !open && setDeleteTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Task</AlertDialogTitle>
+            <AlertDialogTitle>Delete Task Type</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete &quot;{deleteTarget?.name}&quot;? This cannot be undone.
+              Delete &quot;{deleteTarget?.name}&quot;? All tasks of this type will also be deleted. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteTarget) { deleteHomeTask(deleteTarget.id); setDeleteTarget(null); } }}>
+            <AlertDialogAction onClick={() => { if (deleteTarget) { deleteTaskType(deleteTarget.id); setDeleteTarget(null); } }}>
               Delete
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Blocked Reason Dialog */}
-      <Dialog open={!!blockedDialogTask} onOpenChange={(open) => !open && setBlockedDialogTask(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Blocked Reason</DialogTitle>
-          </DialogHeader>
-          <div>
-            <Label>Why is this task blocked?</Label>
-            <Textarea value={blockedReason} onChange={(e) => setBlockedReason(e.target.value)} />
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setBlockedDialogTask(null)}>Cancel</Button>
-            <Button onClick={confirmBlocked} disabled={!blockedReason.trim()}>Confirm</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
-  );
-}
-
-function TaskRow({
-  task,
-  onEdit,
-  onDelete,
-  onStatusChange,
-}: {
-  task: HomeTask;
-  onEdit: (t: HomeTask) => void;
-  onDelete: (t: HomeTask) => void;
-  onStatusChange: (t: HomeTask, s: TaskStatus) => void;
-}) {
-  return (
-    <div className="flex items-center gap-3 rounded-lg border border-border p-3 bg-card">
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className={`font-medium text-sm ${task.status === "complete" ? "line-through text-muted-foreground" : ""}`}>{task.name}</span>
-          <Badge variant="secondary" className={STATUS_COLORS[task.status]}>
-            {task.status}
-          </Badge>
-          {task.weekendOnly && (
-            <Badge variant="secondary" className="bg-purple-900/50 text-purple-300">
-              Weekend Only
-            </Badge>
-          )}
-          {task.category === "scheduled" && task.scheduledDate && (
-            <Badge variant="outline" className="text-xs">
-              <CalendarDays className="h-3 w-3 mr-1" />
-              {task.scheduledDate}
-            </Badge>
-          )}
-        </div>
-        {task.description && (
-          <p className="text-xs text-muted-foreground mt-1 truncate">{task.description}</p>
-        )}
-        {task.status === "blocked" && task.blockedReason && (
-          <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-            <AlertCircle className="h-3 w-3" />
-            {task.blockedReason}
-          </p>
-        )}
-      </div>
-      <div className="flex items-center gap-1 flex-shrink-0">
-        <Select
-          value={task.status}
-          onValueChange={(v) => onStatusChange(task, v as TaskStatus)}
-        >
-          <SelectTrigger className="h-8 w-[120px] text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="incomplete">Incomplete</SelectItem>
-            <SelectItem value="in-progress">In Progress</SelectItem>
-            <SelectItem value="blocked">Blocked</SelectItem>
-            <SelectItem value="complete">Complete</SelectItem>
-          </SelectContent>
-        </Select>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onEdit(task)}>
-          <Pencil className="h-3.5 w-3.5" />
-        </Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive" onClick={() => onDelete(task)}>
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
-      </div>
     </div>
   );
 }
