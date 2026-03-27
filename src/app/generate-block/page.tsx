@@ -312,7 +312,15 @@ export default function GenerateBlockPage() {
                           {/* Task name + status select */}
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium leading-snug">{task.name}</p>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <p className="text-sm font-medium leading-snug">{task.name}</p>
+                                {task.dueDate && (
+                                  <Badge variant="outline" className="text-xs gap-1">
+                                    <Calendar className="h-3 w-3" />
+                                    {task.dueDate}
+                                  </Badge>
+                                )}
+                              </div>
                               {task.description && (
                                 <p className="text-xs mt-0.5 truncate" style={{ color: taskStatus?.color ?? "inherit" }}>{task.description}</p>
                               )}
@@ -558,7 +566,7 @@ export default function GenerateBlockPage() {
 
             <div className="rounded-lg border border-dashed border-border p-3 space-y-3">
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">New Block Type</p>
-              <Input className="h-7 text-xs" placeholder="Name (e.g. Weekend, Morning...)" value={newConfigName} onChange={(e) => setNewConfigName(e.target.value)} />
+              <Input className="h-7 text-xs" placeholder="Name (e.g. Weekend, Morning...)" value={newConfigName} onChange={(e) => setNewConfigName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && newConfigName.trim() && handleAddNewConfig()} />
               <Button size="sm" className="h-7 text-xs" disabled={!newConfigName.trim()} onClick={handleAddNewConfig}>
                 <Plus className="h-3 w-3 mr-1" />Add Block Type
               </Button>

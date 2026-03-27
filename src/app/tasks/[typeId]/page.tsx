@@ -380,7 +380,7 @@ export default function TasksPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editingTask ? "Edit Task" : "Add Task"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} /></div>
+            <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && handleSaveTask()} /></div>
             <div><Label>Description <span className="text-muted-foreground font-normal text-xs">(optional — shown in status color)</span></Label>
               <Textarea value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
             </div>
@@ -473,7 +473,7 @@ export default function TasksPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader><DialogTitle>{editingSubtask ? "Edit Subtask" : "Add Subtask"}</DialogTitle></DialogHeader>
           <div className="space-y-4">
-            <div><Label>Name</Label><Input value={subtaskForm.name} onChange={(e) => setSubtaskForm({ ...subtaskForm, name: e.target.value })} /></div>
+            <div><Label>Name</Label><Input value={subtaskForm.name} onChange={(e) => setSubtaskForm({ ...subtaskForm, name: e.target.value })} onKeyDown={(e) => e.key === "Enter" && handleSaveSubtask()} /></div>
             <div>
               <Label>Status</Label>
               <Select value={subtaskForm.statusId} onValueChange={(v) => v && setSubtaskForm({ ...subtaskForm, statusId: v })}>
