@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
+import { z } from "zod";
 import type {
   AppData,
   Task,
@@ -92,6 +93,105 @@ function bumpMinorVersion(version: string): string {
   return `${parts[0]}.${parts[1] + 1}.${parts[2]}`;
 }
 
+// === Hex color validation ===
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{6}$/;
+export function isValidHexColor(val: string): boolean {
+  return HEX_COLOR_RE.test(val);
+}
+const DEFAULT_COLOR = "#64748b";
+function safeColor(val: unknown): string {
+  return typeof val === "string" && isValidHexColor(val) ? val : DEFAULT_COLOR;
+}
+
+// === Zod schema ===
+const FlagSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(200),
+  color: z.string().regex(HEX_COLOR_RE),
+});
+
+const CustomStatusSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(200),
+  color: z.string().regex(HEX_COLOR_RE),
+  isComplete: z.boolean(),
+  isInProgress: z.boolean(),
+  isRollable: z.boolean(),
+});
+
+const TaskSubtypeSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(200),
+  priority: z.number(),
+});
+
+const TaskTypeSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(200),
+  icon: z.string().max(100),
+  color: z.string().regex(HEX_COLOR_RE),
+  subtypes: z.array(TaskSubtypeSchema),
+});
+
+const SubtaskSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(200),
+  statusId: z.string().max(200),
+  flagIds: z.array(z.string().max(200)).optional(),
+});
+
+const RepeatIntervalSchema = z.enum(["daily", "weekly", "biweekly", "monthly", "bimonthly", "quarterly", "yearly"]);
+
+const TaskSchema = z.object({
+  id: z.string().max(200),
+  typeId: z.string().max(200),
+  subtypeId: z.string().max(200),
+  name: z.string().max(200),
+  description: z.string().max(2000),
+  statusId: z.string().max(200),
+  priority: z.number(),
+  flagIds: z.array(z.string().max(200)).optional(),
+  subtasks: z.array(SubtaskSchema),
+  repeating: z.boolean().optional(),
+  repeatInterval: RepeatIntervalSchema.optional(),
+  lastCompletedAt: z.string().max(100).optional(),
+  dueDate: z.string().max(20).optional(),
+});
+
+const BlockTaskSlotSchema = z.object({
+  taskId: z.string().max(200),
+  subtaskId: z.string().max(200).optional(),
+  status: z.enum(["active", "skipped", "complete"]),
+});
+
+const TaskBlockSchema = z.object({
+  id: z.string().max(200),
+  blockConfigId: z.string().max(200),
+  slots: z.array(BlockTaskSlotSchema.nullable()),
+});
+
+const BlockSlotConfigSchema = z.object({
+  typeId: z.string().max(200),
+  flagId: z.string().max(200).optional(),
+  subtypeOrder: z.array(z.string().max(200)).optional(),
+});
+
+const BlockTypeConfigSchema = z.object({
+  id: z.string().max(200),
+  name: z.string().max(200),
+  slots: z.array(BlockSlotConfigSchema),
+});
+
+const AppDataSchema = z.object({
+  version: z.string().max(20),
+  flags: z.array(FlagSchema),
+  statuses: z.array(CustomStatusSchema),
+  taskTypes: z.array(TaskTypeSchema),
+  tasks: z.array(TaskSchema),
+  blocks: z.array(TaskBlockSchema),
+  blockSettings: z.array(BlockTypeConfigSchema),
+});
+
 function generateId(): string {
   return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
@@ -130,13 +230,15 @@ function migrateOldData(parsed: any): AppData {
       ...s,
       isRollable: s.isRollable !== undefined ? s.isRollable : s.id !== "status-blocked",
     }));
+    // Explicit field-by-field construction — no unsafe ...parsed spread
     return {
-      ...defaultData,
-      ...parsed,
+      version: typeof parsed.version === "string" ? parsed.version : "2.1.0",
+      flags: Array.isArray(parsed.flags) ? parsed.flags : defaultData.flags,
+      statuses,
       taskTypes,
       tasks,
-      statuses,
-      version: parsed.version ?? "2.1.0",
+      blocks: Array.isArray(parsed.blocks) ? parsed.blocks : defaultData.blocks,
+      blockSettings: Array.isArray(parsed.blockSettings) ? parsed.blockSettings : defaultData.blockSettings,
     };
   }
 
@@ -393,11 +495,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // === Task Types ===
   const addTaskType = useCallback((type: Omit<TaskType, "id">) => {
-    setData((prev) => ({ ...prev, taskTypes: [...prev.taskTypes, { ...type, id: generateId() }] }));
+    setData((prev) => ({ ...prev, taskTypes: [...prev.taskTypes, { ...type, color: safeColor(type.color), id: generateId() }] }));
   }, []);
 
   const updateTaskType = useCallback((type: TaskType) => {
-    setData((prev) => ({ ...prev, taskTypes: prev.taskTypes.map((t) => (t.id === type.id ? type : t)) }));
+    setData((prev) => ({ ...prev, taskTypes: prev.taskTypes.map((t) => (t.id === type.id ? { ...type, color: safeColor(type.color) } : t)) }));
   }, []);
 
   const deleteTaskType = useCallback((id: string) => {
@@ -473,11 +575,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // === Statuses ===
   const addStatus = useCallback((status: Omit<CustomStatus, "id">) => {
-    setData((prev) => ({ ...prev, statuses: [...prev.statuses, { ...status, id: generateId() }] }));
+    setData((prev) => ({ ...prev, statuses: [...prev.statuses, { ...status, color: safeColor(status.color), id: generateId() }] }));
   }, []);
 
   const updateStatus = useCallback((status: CustomStatus) => {
-    setData((prev) => ({ ...prev, statuses: prev.statuses.map((s) => (s.id === status.id ? status : s)) }));
+    setData((prev) => ({ ...prev, statuses: prev.statuses.map((s) => (s.id === status.id ? { ...status, color: safeColor(status.color) } : s)) }));
   }, []);
 
   const deleteStatus = useCallback((id: string) => {
@@ -603,11 +705,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   // === Flags ===
   const addFlag = useCallback((flag: Omit<Flag, "id">) => {
-    setData((prev) => ({ ...prev, flags: [...prev.flags, { ...flag, id: generateId() }] }));
+    setData((prev) => ({ ...prev, flags: [...prev.flags, { ...flag, color: safeColor(flag.color), id: generateId() }] }));
   }, []);
 
   const updateFlag = useCallback((flag: Flag) => {
-    setData((prev) => ({ ...prev, flags: prev.flags.map((f) => (f.id === flag.id ? flag : f)) }));
+    setData((prev) => ({ ...prev, flags: prev.flags.map((f) => (f.id === flag.id ? { ...flag, color: safeColor(flag.color) } : f)) }));
   }, []);
 
   const deleteFlag = useCallback((id: string) => {
@@ -675,6 +777,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const importData = useCallback((json: string): boolean => {
     try {
       const parsed = JSON.parse(json);
+      // Validate against schema if it looks like a new-format file; allow old-format through for migration
+      if (Array.isArray(parsed.taskTypes) && Array.isArray(parsed.statuses)) {
+        const result = AppDataSchema.safeParse(parsed);
+        if (!result.success) return false;
+        const migrated = migrateOldData(result.data);
+        setData(migrated);
+        return true;
+      }
+      // Old format — migrate without schema enforcement (no sensitive fields)
       const migrated = migrateOldData(parsed);
       setData(migrated);
       return true;

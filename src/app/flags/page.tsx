@@ -18,21 +18,16 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, Flag as FlagIcon, ChevronDown, ChevronRight } from "lucide-react";
 
-const PRESET_COLORS = [
-  "#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6",
-  "#3b82f6", "#8b5cf6", "#ec4899", "#64748b", "#a16207",
-];
-
 export default function FlagsPage() {
   const { data, addFlag, updateFlag, deleteFlag, updateTask, updateSubtask } = useAppContext();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingFlag, setEditingFlag] = useState<Flag | null>(null);
-  const [form, setForm] = useState({ name: "", color: PRESET_COLORS[0] });
+  const [form, setForm] = useState({ name: "", color: "#ef4444" });
   const [deleteTarget, setDeleteTarget] = useState<Flag | null>(null);
   const [expandedFlags, setExpandedFlags] = useState<Set<string>>(new Set());
 
-  const openAdd = () => { setEditingFlag(null); setForm({ name: "", color: PRESET_COLORS[0] }); setDialogOpen(true); };
+  const openAdd = () => { setEditingFlag(null); setForm({ name: "", color: "#ef4444" }); setDialogOpen(true); };
   const openEdit = (flag: Flag) => { setEditingFlag(flag); setForm({ name: flag.name, color: flag.color }); setDialogOpen(true); };
 
   const handleSave = () => {
@@ -160,13 +155,20 @@ export default function FlagsPage() {
             <div><Label>Name</Label><Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="e.g. Weekend Only, Urgent..." onKeyDown={(e) => e.key === "Enter" && handleSave()} /></div>
             <div>
               <Label>Color</Label>
-              <div className="flex items-center gap-3 mt-2">
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_COLORS.map((color) => (
-                    <button key={color} onClick={() => setForm({ ...form, color })} className={`w-7 h-7 rounded-full transition-transform ${form.color === color ? "scale-125 ring-2 ring-offset-2 ring-offset-background ring-white" : "hover:scale-110"}`} style={{ backgroundColor: color }} />
-                  ))}
-                </div>
-                <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent" />
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="color"
+                  value={form.color}
+                  onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  className="w-10 h-10 rounded cursor-pointer border border-border bg-transparent p-0.5 shrink-0"
+                />
+                <Input
+                  value={form.color}
+                  onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  placeholder="#rrggbb"
+                  className="font-mono text-sm w-32"
+                  maxLength={7}
+                />
               </div>
             </div>
           </div>

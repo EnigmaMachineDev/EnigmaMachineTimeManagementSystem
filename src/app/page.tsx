@@ -29,22 +29,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, LayoutGrid } from "lucide-react";
 
-const PRESET_COLORS = [
-  "#f97316", "#ef4444", "#eab308", "#22c55e", "#14b8a6",
-  "#3b82f6", "#8b5cf6", "#ec4899", "#64748b", "#a16207",
-];
-
 export default function TaskTypesPage() {
   const { data, addTaskType, updateTaskType, deleteTaskType } = useAppContext();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingType, setEditingType] = useState<TaskType | null>(null);
-  const [form, setForm] = useState({ name: "", icon: "Home", color: PRESET_COLORS[0] });
+  const [form, setForm] = useState({ name: "", icon: "Home", color: "#f97316" });
   const [deleteTarget, setDeleteTarget] = useState<TaskType | null>(null);
 
   const openAdd = () => {
     setEditingType(null);
-    setForm({ name: "", icon: "Home", color: PRESET_COLORS[0] });
+    setForm({ name: "", icon: "Home", color: "#f97316" });
     setDialogOpen(true);
   };
 
@@ -176,22 +171,19 @@ export default function TaskTypesPage() {
             </div>
             <div>
               <Label>Color</Label>
-              <div className="flex items-center gap-3 mt-2">
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_COLORS.map((color) => (
-                    <button
-                      key={color}
-                      onClick={() => setForm({ ...form, color })}
-                      className={`w-7 h-7 rounded-full transition-transform ${form.color === color ? "scale-125 ring-2 ring-offset-2 ring-offset-background ring-white" : "hover:scale-110"}`}
-                      style={{ backgroundColor: color }}
-                    />
-                  ))}
-                </div>
+              <div className="flex items-center gap-2 mt-2">
                 <input
                   type="color"
                   value={form.color}
                   onChange={(e) => setForm({ ...form, color: e.target.value })}
-                  className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent"
+                  className="w-10 h-10 rounded cursor-pointer border border-border bg-transparent p-0.5 shrink-0"
+                />
+                <Input
+                  value={form.color}
+                  onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  placeholder="#rrggbb"
+                  className="font-mono text-sm w-32"
+                  maxLength={7}
                 />
               </div>
               <div className="mt-3 flex items-center gap-2">

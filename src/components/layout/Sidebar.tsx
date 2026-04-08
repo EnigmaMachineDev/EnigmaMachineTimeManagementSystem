@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutGrid, CircleDot, Shuffle, Download, Upload, Menu, X, Flag, Trash2 } from "lucide-react";
+import { LayoutGrid, CircleDot, Shuffle, Download, Upload, Menu, X, Flag, Trash2, LockOpen } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useAppContext } from "@/contexts/AppContext";
@@ -103,6 +103,10 @@ export default function Sidebar() {
           Clear All Data
         </Button>
         <input ref={fileInputRef} type="file" accept=".json" className="hidden" onChange={handleFileChange} />
+        <div className="flex items-start gap-1.5 px-1 pt-1">
+          <LockOpen className="h-3 w-3 mt-0.5 shrink-0 text-muted-foreground/50" />
+          <p className="text-xs text-muted-foreground/50 leading-tight">Data is stored in plaintext in your browser&apos;s localStorage.</p>
+        </div>
       </div>
     </>
   );

@@ -18,11 +18,6 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Plus, Pencil, Trash2, CircleDot } from "lucide-react";
 
-const PRESET_COLORS = [
-  "#eab308", "#3b82f6", "#22c55e", "#ef4444", "#f97316",
-  "#8b5cf6", "#ec4899", "#14b8a6", "#64748b", "#a16207",
-];
-
 const DEFAULT_STATUS_IDS = ["status-incomplete", "status-in-progress", "status-complete", "status-blocked"];
 
 export default function StatusesPage() {
@@ -30,22 +25,16 @@ export default function StatusesPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<CustomStatus | null>(null);
-  const [form, setForm] = useState({ name: "", color: PRESET_COLORS[0], isComplete: false, isInProgress: false, isRollable: true });
+  const [form, setForm] = useState({ name: "", color: "#eab308", isComplete: false, isInProgress: false, isRollable: true });
   const [deleteTarget, setDeleteTarget] = useState<CustomStatus | null>(null);
 
   const openAdd = () => {
     setEditing(null);
-    setForm({ name: "", color: PRESET_COLORS[0], isComplete: false, isInProgress: false, isRollable: true });
+    setForm({ name: "", color: "#eab308", isComplete: false, isInProgress: false, isRollable: true });
     setDialogOpen(true);
   };
 
   const openEdit = (status: CustomStatus) => {
-    setEditing(status);
-    setForm({ name: status.name, color: status.color, isComplete: status.isComplete, isInProgress: status.isInProgress, isRollable: status.isRollable });
-    setDialogOpen(true);
-  };
-
-  const openColorEdit = (status: CustomStatus) => {
     setEditing(status);
     setForm({ name: status.name, color: status.color, isComplete: status.isComplete, isInProgress: status.isInProgress, isRollable: status.isRollable });
     setDialogOpen(true);
@@ -107,7 +96,7 @@ export default function StatusesPage() {
                   </div>
                 </div>
                 <div className="flex gap-1 shrink-0">
-                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => isDefault ? openColorEdit(status) : openEdit(status)}>
+                  <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEdit(status)}>
                     <Pencil className="h-3.5 w-3.5" />
                   </Button>
                   <Button
@@ -140,15 +129,23 @@ export default function StatusesPage() {
             )}
             <div>
               <Label>Color</Label>
-              <div className="flex items-center gap-3 mt-2">
-                <div className="flex flex-wrap gap-2">
-                  {PRESET_COLORS.map((color) => (
-                    <button key={color} onClick={() => setForm({ ...form, color })}
-                      className={`w-7 h-7 rounded-full transition-transform ${form.color === color ? "scale-125 ring-2 ring-offset-2 ring-offset-background ring-white" : "hover:scale-110"}`}
-                      style={{ backgroundColor: color }} />
-                  ))}
-                </div>
-                <input type="color" value={form.color} onChange={(e) => setForm({ ...form, color: e.target.value })} className="w-8 h-8 rounded cursor-pointer border border-border bg-transparent" />
+              <div className="flex items-center gap-2 mt-2">
+                <input
+                  type="color"
+                  value={form.color}
+                  onChange={(e) => setForm({ ...form, color: e.target.value })}
+                  className="w-10 h-10 rounded cursor-pointer border border-border bg-transparent p-0.5 shrink-0"
+                />
+                <Input
+                  value={form.color}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setForm({ ...form, color: val });
+                  }}
+                  placeholder="#rrggbb"
+                  className="font-mono text-sm w-32"
+                  maxLength={7}
+                />
               </div>
             </div>
             {(!editing || !DEFAULT_STATUS_IDS.includes(editing.id)) && (
