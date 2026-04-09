@@ -3,8 +3,8 @@ import {
   ShoppingCart, Dumbbell, Palette, Code, Wrench, Car, Plane, Coffee,
   Utensils, Dog, Sun, Moon, Mountain, Globe, Leaf, Zap, Flame,
   GraduationCap, Hammer, Laptop, Phone, Tv, Trophy, Target, Clock,
-  type LucideIcon,
-} from "lucide-react";
+} from "lucide-react-native";
+import type { LucideIcon } from "lucide-react-native";
 
 export const ICON_MAP: Record<string, LucideIcon> = {
   Home, Briefcase, Gamepad2, BookOpen, Music, Camera, Heart, Star,

@@ -1,7 +1,6 @@
-"use client";
-
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { z } from "zod";
+import { loadData, saveData } from "@/lib/storage";
 import type {
   AppData,
   Task,
@@ -33,8 +32,7 @@ const DEFAULT_TASK_TYPES: TaskType[] = [
       { id: "sub-scheduled", name: "Scheduled", priority: 0 },
       { id: "sub-priority", name: "Priority", priority: 1 },
       { id: "sub-repeating", name: "Repeating", priority: 2 },
-      { id: "sub-freelance", name: "Freelance Development", priority: 3 },
-      { id: "sub-misc", name: "Misc", priority: 4 },
+      { id: "sub-misc", name: "Misc", priority: 3 },
     ],
   },
   {
@@ -193,7 +191,8 @@ const AppDataSchema = z.object({
 });
 
 function generateId(): string {
-  return crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+  // Use a simple fallback that works on all platforms
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
 
 // === Repeating task reset helper ===
@@ -230,7 +229,6 @@ function migrateOldData(parsed: any): AppData {
       ...s,
       isRollable: s.isRollable !== undefined ? s.isRollable : s.id !== "status-blocked",
     }));
-    // Explicit field-by-field construction — no unsafe ...parsed spread
     return {
       version: typeof parsed.version === "string" ? parsed.version : "2.1.0",
       flags: Array.isArray(parsed.flags) ? parsed.flags : defaultData.flags,
@@ -251,7 +249,6 @@ function migrateOldData(parsed: any): AppData {
     blocked: "status-blocked",
   };
 
-  // Home task category → subtype mapping
   const homeSubtypeMap: Record<string, string> = {
     scheduled: "sub-scheduled",
     priority: "sub-priority",
@@ -260,7 +257,6 @@ function migrateOldData(parsed: any): AppData {
     misc: "sub-misc",
   };
 
-  // Build task types with subtypes
   const taskTypes: TaskType[] = [
     {
       id: "type-home", name: "Home Tasks", icon: "Home", color: "#f97316",
@@ -302,7 +298,6 @@ function migrateOldData(parsed: any): AppData {
   const tasks: Task[] = [];
   let priority = 0;
 
-  // Migrate home tasks
   const homeTasks: any[] = parsed.homeTasks || [];
   for (const ht of homeTasks) {
     const repeating = ht.category === "repeating";
@@ -335,7 +330,6 @@ function migrateOldData(parsed: any): AppData {
     });
   }
 
-  // Migrate work items
   priority = 0;
   const workItems: any[] = parsed.workItems || [];
   for (const wi of workItems) {
@@ -358,7 +352,6 @@ function migrateOldData(parsed: any): AppData {
     });
   }
 
-  // Migrate free time tasks
   priority = 0;
   const ftTasks: any[] = parsed.freeTimeTasks || [];
   for (const ft of ftTasks) {
@@ -377,7 +370,6 @@ function migrateOldData(parsed: any): AppData {
     });
   }
 
-  // Migrate block settings: map old slot types to new typeIds
   const slotTypeMap: Record<string, string> = {
     home: "type-home",
     work: "type-work",
@@ -401,13 +393,14 @@ function migrateOldData(parsed: any): AppData {
     statuses,
     taskTypes,
     tasks,
-    blocks: [], // old blocks are incompatible, start fresh
+    blocks: [],
     blockSettings,
   };
 }
 
 interface AppContextType {
   data: AppData;
+  loaded: boolean;
   // Task Types
   addTaskType: (type: Omit<TaskType, "id">) => void;
   updateTaskType: (type: TaskType) => void;
@@ -455,41 +448,43 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [data, setData] = useState<AppData>(defaultData);
   const [loaded, setLoaded] = useState(false);
 
-  // Load from localStorage on mount + migrate + reset repeating tasks
+  // Load from storage on mount + migrate + reset repeating tasks
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        const migrated = migrateOldData(parsed);
+    (async () => {
+      try {
+        const stored = await loadData();
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          const migrated = migrateOldData(parsed);
 
-        // Reset repeating tasks whose interval has elapsed
-        const now = new Date();
-        const resetTasks = migrated.tasks.map((task) => {
-          if (!task.repeating || !task.repeatInterval || !task.lastCompletedAt) return task;
-          const status = migrated.statuses.find((s) => s.id === task.statusId);
-          if (!status?.isComplete) return task;
-          const lastCompleted = new Date(task.lastCompletedAt);
-          const diffDays = (now.getTime() - lastCompleted.getTime()) / (1000 * 60 * 60 * 24);
-          if (diffDays >= getRepeatDays(task.repeatInterval)) {
-            const defaultStatus = migrated.statuses.find((s) => !s.isComplete && !s.isInProgress);
-            return { ...task, statusId: defaultStatus?.id || "status-incomplete" };
-          }
-          return task;
-        });
+          // Reset repeating tasks whose interval has elapsed
+          const now = new Date();
+          const resetTasks = migrated.tasks.map((task) => {
+            if (!task.repeating || !task.repeatInterval || !task.lastCompletedAt) return task;
+            const status = migrated.statuses.find((s) => s.id === task.statusId);
+            if (!status?.isComplete) return task;
+            const lastCompleted = new Date(task.lastCompletedAt);
+            const diffDays = (now.getTime() - lastCompleted.getTime()) / (1000 * 60 * 60 * 24);
+            if (diffDays >= getRepeatDays(task.repeatInterval)) {
+              const defaultStatus = migrated.statuses.find((s) => !s.isComplete && !s.isInProgress);
+              return { ...task, statusId: defaultStatus?.id || "status-incomplete" };
+            }
+            return task;
+          });
 
-        setData({ ...migrated, tasks: resetTasks });
+          setData({ ...migrated, tasks: resetTasks });
+        }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-    setLoaded(true);
+      setLoaded(true);
+    })();
   }, []);
 
-  // Persist to localStorage
+  // Persist to storage
   useEffect(() => {
     if (loaded) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+      saveData(JSON.stringify(data)).catch(() => {});
     }
   }, [data, loaded]);
 
@@ -584,7 +579,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const deleteStatus = useCallback((id: string) => {
     setData((prev) => {
-      // Don't allow deleting the last status
       if (prev.statuses.length <= 1) return prev;
       const fallback = prev.statuses.find((s) => s.id !== id)!;
       return {
@@ -617,7 +611,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   const updateTask = useCallback((task: Task) => {
     setData((prev) => {
-      // If task was just marked complete and is repeating, record lastCompletedAt
       const oldTask = prev.tasks.find((t) => t.id === task.id);
       const newStatus = prev.statuses.find((s) => s.id === task.statusId);
       const oldStatus = oldTask ? prev.statuses.find((s) => s.id === oldTask.statusId) : null;
@@ -646,7 +639,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const idx = typeTasks.findIndex((t) => t.id === taskId);
       const swapIdx = direction === "up" ? idx - 1 : idx + 1;
       if (swapIdx < 0 || swapIdx >= typeTasks.length) return prev;
-
       const swapTask = typeTasks[swapIdx];
       const newTasks = prev.tasks.map((t) => {
         if (t.id === task.id) return { ...t, priority: swapTask.priority };
@@ -777,7 +769,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const importData = useCallback((json: string): boolean => {
     try {
       const parsed = JSON.parse(json);
-      // Validate against schema if it looks like a new-format file; allow old-format through for migration
       if (Array.isArray(parsed.taskTypes) && Array.isArray(parsed.statuses)) {
         const result = AppDataSchema.safeParse(parsed);
         if (!result.success) return false;
@@ -785,7 +776,6 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         setData(migrated);
         return true;
       }
-      // Old format — migrate without schema enforcement (no sensitive fields)
       const migrated = migrateOldData(parsed);
       setData(migrated);
       return true;
@@ -798,18 +788,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setData(defaultData);
   }, []);
 
-  if (!loaded) {
-    return (
-      <div className="flex min-h-screen items-center justify-center">
-        <div className="text-muted-foreground">Loading...</div>
-      </div>
-    );
-  }
-
   return (
     <AppContext.Provider
       value={{
         data,
+        loaded,
         addTaskType,
         updateTaskType,
         deleteTaskType,

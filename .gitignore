@@ -1,17 +1,11 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
-/.pnp
-.pnp.js
-.yarn/install-state.gz
 
-# testing
-/coverage
-
-# next.js
-/.next/
-/out/
+# Expo
+.expo/
+dist/
+web-build/
+expo-env.d.ts
 
 # production
 /build
@@ -29,12 +23,8 @@ yarn-error.log*
 .env*.local
 .env
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
 # IDE
 .vscode/
@@ -45,3 +35,6 @@ next-env.d.ts
 
 # OS
 Thumbs.db
+
+# Backup
+_backup_nextjs/

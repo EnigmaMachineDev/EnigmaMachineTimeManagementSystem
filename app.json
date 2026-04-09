@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Enigma TMS",
+    "slug": "enigma-tms",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/EnigmaMachineLogo1024.png",
+    "scheme": "enigma-tms",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/EnigmaMachineLogo1024.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0f0a"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/EnigmaMachineLogo1024.png",
+        "backgroundColor": "#0a0f0a"
+      },
+      "package": "com.enigma.tms"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/EnigmaMachineLogo196.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ]
+  }
+}
