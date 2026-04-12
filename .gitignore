@@ -39,6 +39,9 @@ Thumbs.db
 # Backup
 _backup_nextjs/
 
+# Local dev notes (not for repo)
+BUILDS.md
+
 # EAS / Expo build artifacts
 android/
 ios/

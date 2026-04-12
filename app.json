@@ -18,7 +18,8 @@
         "foregroundImage": "./assets/EnigmaMachineLogo1024.png",
         "backgroundColor": "#0a0f0a"
       },
-      "package": "com.enigma.tms"
+      "package": "com.enigma.tms",
+      "versionCode": 1
     },
     "web": {
       "bundler": "metro",
