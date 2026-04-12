@@ -38,3 +38,13 @@ Thumbs.db
 
 # Backup
 _backup_nextjs/
+
+# EAS / Expo build artifacts
+android/
+ios/
+*.apk
+*.aab
+*.ipa
+
+# NativeWind / Metro cache
+.metro-health-check*
