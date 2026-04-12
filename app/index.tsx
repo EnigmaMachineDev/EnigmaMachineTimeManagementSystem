@@ -15,10 +15,10 @@ import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
 } from "@/components/ui/Dialog";
-import { Plus, Pencil, Trash2, LayoutGrid } from "lucide-react-native";
+import { Plus, Pencil, Trash2, LayoutGrid, ChevronUp, ChevronDown } from "lucide-react-native";
 
 export default function TaskTypesPage() {
-  const { data, addTaskType, updateTaskType, deleteTaskType } = useAppContext();
+  const { data, addTaskType, updateTaskType, deleteTaskType, reorderTaskType } = useAppContext();
   const router = useRouter();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -110,6 +110,12 @@ export default function TaskTypesPage() {
                       </View>
                     </View>
                     <View className="flex-row gap-1">
+                      <Button variant="ghost" size="icon" onPress={() => reorderTaskType(type.id, "up")}>
+                        <ChevronUp size={14} color="#7a9f7a" />
+                      </Button>
+                      <Button variant="ghost" size="icon" onPress={() => reorderTaskType(type.id, "down")}>
+                        <ChevronDown size={14} color="#7a9f7a" />
+                      </Button>
                       <Button variant="ghost" size="icon" onPress={() => openEdit(type)}>
                         <Pencil size={12} color="#7a9f7a" />
                       </Button>

@@ -405,6 +405,7 @@ interface AppContextType {
   addTaskType: (type: Omit<TaskType, "id">) => void;
   updateTaskType: (type: TaskType) => void;
   deleteTaskType: (id: string) => void;
+  reorderTaskType: (typeId: string, direction: "up" | "down") => void;
   // Task Subtypes
   addTaskSubtype: (typeId: string, name: string) => void;
   updateTaskSubtype: (typeId: string, subtypeId: string, name: string) => void;
@@ -507,6 +508,18 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         slots: c.slots.filter((s) => s.typeId !== id),
       })),
     }));
+  }, []);
+
+  const reorderTaskType = useCallback((typeId: string, direction: "up" | "down") => {
+    setData((prev) => {
+      const idx = prev.taskTypes.findIndex((t) => t.id === typeId);
+      if (idx === -1) return prev;
+      const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (swapIdx < 0 || swapIdx >= prev.taskTypes.length) return prev;
+      const newTypes = [...prev.taskTypes];
+      [newTypes[idx], newTypes[swapIdx]] = [newTypes[swapIdx], newTypes[idx]];
+      return { ...prev, taskTypes: newTypes };
+    });
   }, []);
 
   // === Task Subtypes ===
@@ -796,6 +809,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addTaskType,
         updateTaskType,
         deleteTaskType,
+        reorderTaskType,
         addTaskSubtype,
         updateTaskSubtype,
         deleteTaskSubtype,

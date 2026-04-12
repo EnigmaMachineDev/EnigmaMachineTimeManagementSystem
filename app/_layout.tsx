@@ -31,7 +31,7 @@ function DrawerContent() {
   const handleClear = () => {
     Alert.alert(
       "Clear All Data",
-      "This will permanently delete all task types, tasks, statuses, flags, blocks, and settings. This cannot be undone.",
+      "This will permanently delete all task types, tasks, statuses, flags, to do lists, and settings. This cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         { text: "Clear All Data", style: "destructive", onPress: clearAllData },
@@ -85,7 +85,7 @@ function DrawerContent() {
         <View className="pt-2">
           <NavLink href="/statuses" label="Statuses" icon={CircleDot} />
           <NavLink href="/flags" label="Flags" icon={Flag} />
-          <NavLink href="/generate-block" label="Generate Block" icon={Shuffle} />
+          <NavLink href="/generate-block" label="To Do Lists" icon={Shuffle} />
         </View>
       </ScrollView>
 
@@ -130,7 +130,7 @@ export default function RootLayout() {
         <Drawer.Screen name="tasks/[typeId]" options={{ title: "Tasks", drawerItemStyle: { display: "none" } }} />
         <Drawer.Screen name="statuses" options={{ title: "Statuses" }} />
         <Drawer.Screen name="flags" options={{ title: "Flags" }} />
-        <Drawer.Screen name="generate-block" options={{ title: "Generate Block" }} />
+        <Drawer.Screen name="generate-block" options={{ title: "To Do Lists" }} />
       </Drawer>
     </AppProvider>
   );

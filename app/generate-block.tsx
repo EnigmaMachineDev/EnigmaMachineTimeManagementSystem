@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/Input";
 import { Label } from "@/components/ui/Label";
 import { Badge } from "@/components/ui/Badge";
 import { Select } from "@/components/ui/Select";
+import { Checkbox } from "@/components/ui/Checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
 } from "@/components/ui/Dialog";
 import {
-  Plus, Pencil, Trash2, Shuffle, Play, SkipForward, Check, X, RefreshCw, Settings,
+  Plus, Pencil, Trash2, Shuffle, Play, SkipForward, Check, X, RefreshCw, Settings, Copy,
 } from "lucide-react-native";
 
 function generateId() { return Date.now().toString(36) + Math.random().toString(36).slice(2); }
@@ -34,7 +35,6 @@ export default function GenerateBlockPage() {
   const [showSettings, setShowSettings] = useState(false);
 
   const typeOptions = data.taskTypes.map((t) => ({ value: t.id, label: t.name }));
-  const flagOptions = [{ value: "", label: "Any" }, ...data.flags.map((f) => ({ value: f.id, label: f.name }))];
 
   const openAddConfig = () => { setEditingConfig(null); setConfigForm({ name: "", slots: [] }); setConfigDialogOpen(true); };
   const openEditConfig = (c: BlockTypeConfig) => { setEditingConfig(c); setConfigForm({ name: c.name, slots: [...c.slots] }); setConfigDialogOpen(true); };
@@ -49,6 +49,15 @@ export default function GenerateBlockPage() {
   const addSlotToForm = () => {
     if (data.taskTypes.length === 0) return;
     setConfigForm((prev) => ({ ...prev, slots: [...prev.slots, { typeId: data.taskTypes[0].id }] }));
+  };
+
+  const duplicateSlotInForm = (idx: number) => {
+    setConfigForm((prev) => {
+      const clone = { ...prev.slots[idx] };
+      const newSlots = [...prev.slots];
+      newSlots.splice(idx + 1, 0, clone);
+      return { ...prev, slots: newSlots };
+    });
   };
 
   const removeSlotFromForm = (idx: number) => {
@@ -73,21 +82,34 @@ export default function GenerateBlockPage() {
       return true;
     });
 
-    if (slot.subtypeOrder && slot.subtypeOrder.length > 0) {
-      candidates.sort((a, b) => {
-        const ai = slot.subtypeOrder!.indexOf(a.subtypeId);
-        const bi = slot.subtypeOrder!.indexOf(b.subtypeId);
-        return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
+    const taskType = data.taskTypes.find((tt) => tt.id === slot.typeId);
+    const subtypePriorityMap = taskType
+      ? new Map(taskType.subtypes.map((st) => [st.id, st.priority]))
+      : new Map<string, number>();
+
+    if (candidates.length === 0 && slot.flagId) {
+      candidates = data.tasks.filter((t) => {
+        if (t.typeId !== slot.typeId) return false;
+        if (!rollableStatusIds.includes(t.statusId)) return false;
+        if (usedTaskIds.has(t.id)) return false;
+        return true;
       });
-    } else {
-      const taskType = data.taskTypes.find((tt) => tt.id === slot.typeId);
-      if (taskType) {
-        const subtypePriorityMap = new Map(taskType.subtypes.map((st) => [st.id, st.priority]));
-        candidates.sort((a, b) => (subtypePriorityMap.get(a.subtypeId) ?? 999) - (subtypePriorityMap.get(b.subtypeId) ?? 999));
-      }
     }
 
-    candidates.sort((a, b) => a.priority - b.priority);
+    candidates.sort((a, b) => {
+      let aSub: number, bSub: number;
+      if (slot.subtypeOrder && slot.subtypeOrder.length > 0) {
+        const ai = slot.subtypeOrder.indexOf(a.subtypeId);
+        const bi = slot.subtypeOrder.indexOf(b.subtypeId);
+        aSub = ai === -1 ? 999 : ai;
+        bSub = bi === -1 ? 999 : bi;
+      } else {
+        aSub = subtypePriorityMap.get(a.subtypeId) ?? 999;
+        bSub = subtypePriorityMap.get(b.subtypeId) ?? 999;
+      }
+      if (aSub !== bSub) return aSub - bSub;
+      return a.priority - b.priority;
+    });
 
     if (candidates.length === 0) return null;
     const top = candidates[0];
@@ -99,10 +121,22 @@ export default function GenerateBlockPage() {
     return { taskId: top.id, status: "active" };
   };
 
+  const getExistingActiveTaskIds = (): Set<string> => {
+    const ids = new Set<string>();
+    for (const block of data.blocks) {
+      for (const slot of block.slots) {
+        if (slot && slot.status === "active") {
+          ids.add(slot.taskId);
+        }
+      }
+    }
+    return ids;
+  };
+
   const generateBlock = (configId: string) => {
     const config = data.blockSettings.find((c) => c.id === configId);
     if (!config) return;
-    const usedTaskIds = new Set<string>();
+    const usedTaskIds = getExistingActiveTaskIds();
     const slots: (BlockTaskSlot | null)[] = config.slots.map((slot) => {
       const picked = pickTaskForSlot(slot, usedTaskIds);
       if (picked) usedTaskIds.add(picked.taskId);
@@ -115,7 +149,7 @@ export default function GenerateBlockPage() {
   const rerollSlot = (block: TaskBlock, slotIdx: number) => {
     const config = data.blockSettings.find((c) => c.id === block.blockConfigId);
     if (!config) return;
-    const usedTaskIds = new Set(block.slots.filter((s): s is BlockTaskSlot => s !== null && s.status !== "skipped").map((s) => s.taskId));
+    const usedTaskIds = getExistingActiveTaskIds();
     const oldSlot = block.slots[slotIdx];
     if (oldSlot) usedTaskIds.delete(oldSlot.taskId);
     const picked = pickTaskForSlot(config.slots[slotIdx], usedTaskIds);
@@ -157,7 +191,7 @@ export default function GenerateBlockPage() {
   return (
     <ScrollView className="flex-1 bg-background" contentContainerStyle={{ padding: 16, gap: 16 }}>
       <View className="flex-row items-center justify-between">
-        <Text className="text-2xl font-bold text-foreground">Generate Block</Text>
+        <Text className="text-2xl font-bold text-foreground">To Do Lists</Text>
         <Button variant="outline" size="sm" onPress={() => setShowSettings(!showSettings)}>
           <View className="flex-row items-center gap-1">
             <Settings size={14} color="#7a9f7a" />
@@ -170,9 +204,9 @@ export default function GenerateBlockPage() {
       {showSettings && (
         <View className="gap-3">
           <View className="flex-row items-center justify-between">
-            <Text className="text-sm font-semibold text-foreground">Block Types</Text>
+            <Text className="text-sm font-semibold text-foreground">List Types</Text>
             <Button variant="outline" size="sm" onPress={openAddConfig}>
-              <View className="flex-row items-center gap-1"><Plus size={12} color="#7a9f7a" /><Text className="text-xs text-foreground">New Block Type</Text></View>
+              <View className="flex-row items-center gap-1"><Plus size={12} color="#7a9f7a" /><Text className="text-xs text-foreground">New List Type</Text></View>
             </Button>
           </View>
           {data.blockSettings.map((config) => (
@@ -215,7 +249,7 @@ export default function GenerateBlockPage() {
             </Button>
           ))}
           {data.blockSettings.length === 0 && (
-            <Text className="text-sm text-muted-foreground italic">No block types configured. Open settings to add one.</Text>
+            <Text className="text-sm text-muted-foreground italic">No list types configured. Open settings to add one.</Text>
           )}
         </View>
       </View>
@@ -223,14 +257,14 @@ export default function GenerateBlockPage() {
       {/* Active Blocks */}
       {data.blocks.length > 0 && (
         <View className="gap-3">
-          <Text className="text-sm font-semibold text-foreground">Active Blocks</Text>
+          <Text className="text-sm font-semibold text-foreground">Active To Do Lists</Text>
           {[...data.blocks].reverse().map((block) => {
             const config = data.blockSettings.find((c) => c.id === block.blockConfigId);
             return (
               <Card key={block.id}>
                 <CardContent className="pt-3 pb-3">
                   <View className="flex-row items-center justify-between mb-2">
-                    <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{config?.name ?? "Block"}</Text>
+                    <Text className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">{config?.name ?? "List"}</Text>
                     <Button variant="ghost" size="icon" onPress={() => deleteBlock(block.id)}><Trash2 size={14} color="#e57373" /></Button>
                   </View>
                   <View className="gap-2">
@@ -279,7 +313,7 @@ export default function GenerateBlockPage() {
       {/* Config Dialog */}
       <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
         <DialogContent>
-          <DialogHeader><DialogTitle>{editingConfig ? "Edit Block Type" : "New Block Type"}</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>{editingConfig ? "Edit List Type" : "New List Type"}</DialogTitle></DialogHeader>
           <View className="gap-4">
             <View><Label>Name</Label><Input value={configForm.name} onChangeText={(t) => setConfigForm({ ...configForm, name: t })} placeholder="e.g. Weekend, Weekday..." /></View>
             <View>
@@ -295,11 +329,39 @@ export default function GenerateBlockPage() {
                 <View className="gap-2">
                   {configForm.slots.map((slot, idx) => (
                     <View key={idx} className="flex-row items-center gap-2 rounded border border-border p-2 bg-muted/30">
-                      <View className="flex-1 gap-1">
+                      <View className="flex-1 gap-2">
                         <Select value={slot.typeId} onValueChange={(v) => updateSlotInForm(idx, { typeId: v })} options={typeOptions} />
-                        <Select value={slot.flagId ?? ""} onValueChange={(v) => updateSlotInForm(idx, { flagId: v || undefined })} options={flagOptions} />
+                        {data.flags.length > 0 && (
+                          <View>
+                            <Text className="text-xs text-muted-foreground mb-1">Flag filter:</Text>
+                            <View className="flex-row flex-wrap gap-1">
+                              {data.flags.map((flag) => {
+                                const isSelected = slot.flagId === flag.id;
+                                return (
+                                  <Pressable
+                                    key={flag.id}
+                                    onPress={() => updateSlotInForm(idx, { flagId: isSelected ? undefined : flag.id })}
+                                  >
+                                    <Badge
+                                      variant={isSelected ? "default" : "outline"}
+                                      style={isSelected
+                                        ? { backgroundColor: flag.color, borderColor: flag.color, borderWidth: 2 }
+                                        : { borderColor: flag.color, borderWidth: 2 }
+                                      }
+                                    >
+                                      <Text className={`text-xs ${isSelected ? "text-white font-medium" : "text-foreground"}`}>{flag.name}</Text>
+                                    </Badge>
+                                  </Pressable>
+                                );
+                              })}
+                            </View>
+                          </View>
+                        )}
                       </View>
-                      <Button variant="ghost" size="icon" onPress={() => removeSlotFromForm(idx)}><Trash2 size={14} color="#e57373" /></Button>
+                      <View className="gap-1">
+                        <Button variant="ghost" size="icon" onPress={() => duplicateSlotInForm(idx)}><Copy size={14} color="#7a9f7a" /></Button>
+                        <Button variant="ghost" size="icon" onPress={() => removeSlotFromForm(idx)}><Trash2 size={14} color="#e57373" /></Button>
+                      </View>
                     </View>
                   ))}
                 </View>
@@ -316,7 +378,7 @@ export default function GenerateBlockPage() {
       {/* Delete Config */}
       <AlertDialog open={!!deleteConfigTarget} onOpenChange={(o) => !o && setDeleteConfigTarget(null)}>
         <AlertDialogContent>
-          <AlertDialogHeader><AlertDialogTitle>Delete Block Type</AlertDialogTitle><AlertDialogDescription>Delete "{deleteConfigTarget?.name}"? Generated blocks of this type will also be removed.</AlertDialogDescription></AlertDialogHeader>
+          <AlertDialogHeader><AlertDialogTitle>Delete List Type</AlertDialogTitle><AlertDialogDescription>Delete "{deleteConfigTarget?.name}"? Generated to do lists of this type will also be removed.</AlertDialogDescription></AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onPress={() => setDeleteConfigTarget(null)}>Cancel</AlertDialogCancel>
             <AlertDialogAction onPress={() => { if (deleteConfigTarget) { deleteBlockTypeConfig(deleteConfigTarget.id); setDeleteConfigTarget(null); } }}>Delete</AlertDialogAction>
