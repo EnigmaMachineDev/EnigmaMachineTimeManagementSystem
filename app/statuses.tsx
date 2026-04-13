@@ -2,17 +2,17 @@ import React, { useState } from "react";
 import { View, Text, ScrollView } from "react-native";
 import { useAppContext } from "@/contexts/AppContext";
 import type { CustomStatus } from "@/types";
-import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import { ColorSwatchPicker } from "@/components/ui/ColorSwatchPicker";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
-} from "@/components/ui/Dialog";
+} from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, CircleDot } from "lucide-react-native";
 
 type StatusForm = { name: string; color: string; isComplete: boolean; isInProgress: boolean; isRollable: boolean };

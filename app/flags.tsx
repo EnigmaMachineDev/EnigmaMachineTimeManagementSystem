@@ -2,16 +2,16 @@ import React, { useState } from "react";
 import { View, Text, Pressable, ScrollView } from "react-native";
 import { useAppContext } from "@/contexts/AppContext";
 import type { Flag } from "@/types";
-import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ColorSwatchPicker } from "@/components/ui/ColorSwatchPicker";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
-} from "@/components/ui/Dialog";
+} from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, Flag as FlagIcon } from "lucide-react-native";
 
 export default function FlagsPage() {

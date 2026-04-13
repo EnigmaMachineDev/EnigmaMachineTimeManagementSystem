@@ -3,18 +3,18 @@ import { View, Text, Pressable, ScrollView, Alert } from "react-native";
 import { useAppContext } from "@/contexts/AppContext";
 import type { BlockTypeConfig, BlockSlotConfig, BlockTaskSlot, TaskBlock } from "@/types";
 import { getIcon } from "@/lib/icons";
-import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Input } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
-import { Badge } from "@/components/ui/Badge";
-import { Select } from "@/components/ui/Select";
-import { Checkbox } from "@/components/ui/Checkbox";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
-} from "@/components/ui/Dialog";
+} from "@/components/ui/dialog";
 import {
   Plus, Pencil, Trash2, Shuffle, Play, SkipForward, Check, X, RefreshCw, Settings, Copy,
 } from "lucide-react-native";

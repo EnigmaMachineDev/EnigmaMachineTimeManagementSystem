@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Pressable, Text } from "react-native";
 import { Check } from "lucide-react-native";
-import { Input } from "./Input";
+import { Input } from "./input";
 import { cn } from "@/lib/utils";
 
 const PRESET_COLORS = [

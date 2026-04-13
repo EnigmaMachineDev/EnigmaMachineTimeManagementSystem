@@ -4,18 +4,18 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useAppContext } from "@/contexts/AppContext";
 import type { Task, Subtask, RepeatInterval, TaskSubtype } from "@/types";
 import { getIcon } from "@/lib/icons";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { Input, Textarea } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
-import { Checkbox } from "@/components/ui/Checkbox";
-import { Select } from "@/components/ui/Select";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input, Textarea } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select } from "@/components/ui/select";
 import { DatePicker } from "@/components/ui/DatePicker";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
-} from "@/components/ui/Dialog";
+} from "@/components/ui/dialog";
 import {
   Plus, Pencil, Trash2, ChevronDown, ChevronRight, ArrowUp, ArrowDown,
   CheckSquare, Repeat, FolderPlus, Calendar,

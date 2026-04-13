@@ -4,17 +4,17 @@ import { useRouter } from "expo-router";
 import { useAppContext } from "@/contexts/AppContext";
 import type { TaskType } from "@/types";
 import { getIcon, ICON_NAMES, ICON_MAP } from "@/lib/icons";
-import { Button } from "@/components/ui/Button";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Input } from "@/components/ui/Input";
-import { Label } from "@/components/ui/Label";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ColorSwatchPicker } from "@/components/ui/ColorSwatchPicker";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogAction, AlertDialogCancel,
-} from "@/components/ui/Dialog";
+} from "@/components/ui/dialog";
 import { Plus, Pencil, Trash2, LayoutGrid, ChevronUp, ChevronDown } from "lucide-react-native";
 
 export default function TaskTypesPage() {
