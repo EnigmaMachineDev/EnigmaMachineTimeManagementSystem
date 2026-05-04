@@ -65,7 +65,7 @@ export default function TasksPage() {
   const [subtaskDialogOpen, setSubtaskDialogOpen] = useState(false);
   const [subtaskParentId, setSubtaskParentId] = useState("");
   const [editingSubtask, setEditingSubtask] = useState<Subtask | null>(null);
-  const [subtaskForm, setSubtaskForm] = useState({ name: "", statusId: defaultStatusId });
+  const [subtaskForm, setSubtaskForm] = useState({ name: "", description: "", statusId: defaultStatusId });
   const [deleteSubtaskTarget, setDeleteSubtaskTarget] = useState<{ taskId: string; subtask: Subtask } | null>(null);
 
   const [subtypeDialogOpen, setSubtypeDialogOpen] = useState(false);
@@ -97,11 +97,11 @@ export default function TasksPage() {
   const toggleExpanded = (id: string) => setExpandedTasks((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const toggleSubtypeCollapsed = (id: string) => setCollapsedSubtypes((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const openAddSubtask = (taskId: string) => { setSubtaskParentId(taskId); setEditingSubtask(null); setSubtaskForm({ name: "", statusId: defaultStatusId }); setSubtaskDialogOpen(true); };
-  const openEditSubtask = (taskId: string, subtask: Subtask) => { setSubtaskParentId(taskId); setEditingSubtask(subtask); setSubtaskForm({ name: subtask.name, statusId: subtask.statusId }); setSubtaskDialogOpen(true); };
+  const openAddSubtask = (taskId: string) => { setSubtaskParentId(taskId); setEditingSubtask(null); setSubtaskForm({ name: "", description: "", statusId: defaultStatusId }); setSubtaskDialogOpen(true); };
+  const openEditSubtask = (taskId: string, subtask: Subtask) => { setSubtaskParentId(taskId); setEditingSubtask(subtask); setSubtaskForm({ name: subtask.name, description: subtask.description ?? "", statusId: subtask.statusId }); setSubtaskDialogOpen(true); };
   const handleSaveSubtask = () => {
     if (!subtaskForm.name.trim()) return;
-    const sub = { name: subtaskForm.name.trim(), statusId: subtaskForm.statusId };
+    const sub = { name: subtaskForm.name.trim(), description: subtaskForm.description.trim(), statusId: subtaskForm.statusId };
     if (editingSubtask) updateSubtask(subtaskParentId, { ...editingSubtask, ...sub });
     else addSubtask(subtaskParentId, sub);
     setSubtaskDialogOpen(false);
@@ -124,7 +124,8 @@ export default function TasksPage() {
     const childSubtasks = task.subtasks;
     const completedSubs = childSubtasks.filter((s) => getStatus(s.statusId)?.isComplete).length;
     const idx = tasksInSubtype.findIndex((t) => t.id === task.id);
-    const isOverdue = task.dueDate && !status?.isComplete && new Date(task.dueDate) < new Date(new Date().toDateString());
+    const showOverdue = data.settings?.showOverdueIndicator ?? true;
+    const isOverdue = showOverdue && task.dueDate && !status?.isComplete && new Date(task.dueDate) < new Date(new Date().toDateString());
 
     return (
       <View key={task.id} className="rounded-lg border border-border bg-card overflow-hidden">
@@ -201,7 +202,10 @@ export default function TasksPage() {
                   const subStatus = getStatus(sub.statusId);
                   return (
                     <View key={sub.id} className="rounded border border-border bg-card p-2 flex-row items-center gap-2" style={{ borderLeftWidth: 2, borderLeftColor: subStatus?.color ?? '#4a8c4a' }}>
-                      <Text className={`text-sm flex-1 ${subStatus?.isComplete ? "line-through text-muted-foreground" : "text-foreground"}`}>{sub.name}</Text>
+                      <View className="flex-1">
+                        <Text className={`text-sm ${subStatus?.isComplete ? "line-through text-muted-foreground" : "text-foreground"}`}>{sub.name}</Text>
+                        {sub.description ? <Text className="text-xs mt-0.5" style={{ color: subStatus?.color ?? '#7a9f7a' }} numberOfLines={1}>{sub.description}</Text> : null}
+                      </View>
                       <View className="flex-row items-center gap-1.5 rounded border border-border px-1.5 h-6">
                         <View className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: subStatus?.color ?? '#888' }} />
                         <Select value={sub.statusId} onValueChange={(v) => updateSubtask(task.id, { ...sub, statusId: v })} options={statusOptions} triggerClassName="h-6 border-0 px-0 min-w-[80px]" />
@@ -332,6 +336,7 @@ export default function TasksPage() {
           <DialogHeader><DialogTitle>{editingSubtask ? "Edit Subtask" : "Add Subtask"}</DialogTitle></DialogHeader>
           <View className="gap-4">
             <View><Label>Name</Label><Input value={subtaskForm.name} onChangeText={(t) => setSubtaskForm({ ...subtaskForm, name: t })} /></View>
+            <View><Label>Description</Label><Textarea value={subtaskForm.description} onChangeText={(t) => setSubtaskForm({ ...subtaskForm, description: t })} /></View>
             <View>
               <Label>Status</Label>
               <Select

@@ -6,7 +6,7 @@ import { AppProvider, useAppContext } from "@/contexts/AppContext";
 import { getIcon } from "@/lib/icons";
 import { exportJson, importJson } from "@/lib/fileOps";
 import {
-  LayoutGrid, CircleDot, Flag, Shuffle, Download, Upload, Trash2, LockOpen,
+  LayoutGrid, CircleDot, Flag, Shuffle, Download, Upload, Trash2, LockOpen, Settings as SettingsIcon,
 } from "lucide-react-native";
 import { usePathname, useRouter } from "expo-router";
 
@@ -86,6 +86,7 @@ function DrawerContent() {
           <NavLink href="/statuses" label="Statuses" icon={CircleDot} />
           <NavLink href="/flags" label="Flags" icon={Flag} />
           <NavLink href="/generate-block" label="To Do Lists" icon={Shuffle} />
+          <NavLink href="/settings" label="Settings" icon={SettingsIcon} />
         </View>
       </ScrollView>
 
@@ -131,6 +132,7 @@ export default function RootLayout() {
         <Drawer.Screen name="statuses" options={{ title: "Statuses" }} />
         <Drawer.Screen name="flags" options={{ title: "Flags" }} />
         <Drawer.Screen name="generate-block" options={{ title: "To Do Lists" }} />
+        <Drawer.Screen name="settings" options={{ title: "Settings" }} />
       </Drawer>
     </AppProvider>
   );

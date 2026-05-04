@@ -293,7 +293,7 @@ export default function GenerateBlockPage() {
                           {!isDone && !isSkipped && (
                             <View className="flex-row gap-1">
                               <Button variant="ghost" size="icon" className="h-7 w-7" onPress={() => markSlotComplete(block, i)}><Check size={14} color="#22c55e" /></Button>
-                              <Button variant="ghost" size="icon" className="h-7 w-7" onPress={() => markSlotSkipped(block, i)}><X size={14} color="#e57373" /></Button>
+                              <Button variant="ghost" size="icon" className="h-7 w-7" onPress={() => markSlotSkipped(block, i)}><SkipForward size={14} color="#eab308" /></Button>
                               <Button variant="ghost" size="icon" className="h-7 w-7" onPress={() => rerollSlot(block, i)}><RefreshCw size={14} color="#7a9f7a" /></Button>
                             </View>
                           )}

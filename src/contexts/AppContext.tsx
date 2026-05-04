@@ -12,6 +12,7 @@ import type {
   BlockSettings,
   BlockTypeConfig,
   Flag,
+  AppSettings,
 } from "@/types";
 
 const STORAGE_KEY = "enigma-time-management-data";
@@ -75,6 +76,10 @@ const DEFAULT_BLOCK_SETTINGS: BlockSettings = [
   },
 ];
 
+const DEFAULT_SETTINGS: AppSettings = {
+  showOverdueIndicator: true,
+};
+
 const defaultData: AppData = {
   version: "2.0.0",
   flags: [],
@@ -83,6 +88,7 @@ const defaultData: AppData = {
   tasks: [],
   blocks: [],
   blockSettings: DEFAULT_BLOCK_SETTINGS,
+  settings: DEFAULT_SETTINGS,
 };
 
 function bumpMinorVersion(version: string): string {
@@ -134,6 +140,7 @@ const TaskTypeSchema = z.object({
 const SubtaskSchema = z.object({
   id: z.string().max(200),
   name: z.string().max(200),
+  description: z.string().max(2000).optional(),
   statusId: z.string().max(200),
   flagIds: z.array(z.string().max(200)).optional(),
 });
@@ -180,6 +187,10 @@ const BlockTypeConfigSchema = z.object({
   slots: z.array(BlockSlotConfigSchema),
 });
 
+const AppSettingsSchema = z.object({
+  showOverdueIndicator: z.boolean(),
+});
+
 const AppDataSchema = z.object({
   version: z.string().max(20),
   flags: z.array(FlagSchema),
@@ -188,6 +199,7 @@ const AppDataSchema = z.object({
   tasks: z.array(TaskSchema),
   blocks: z.array(TaskBlockSchema),
   blockSettings: z.array(BlockTypeConfigSchema),
+  settings: AppSettingsSchema.optional(),
 });
 
 function generateId(): string {
@@ -237,6 +249,9 @@ function migrateOldData(parsed: any): AppData {
       tasks,
       blocks: Array.isArray(parsed.blocks) ? parsed.blocks : defaultData.blocks,
       blockSettings: Array.isArray(parsed.blockSettings) ? parsed.blockSettings : defaultData.blockSettings,
+      settings: parsed.settings && typeof parsed.settings === "object"
+        ? { ...DEFAULT_SETTINGS, ...parsed.settings }
+        : DEFAULT_SETTINGS,
     };
   }
 
@@ -395,6 +410,7 @@ function migrateOldData(parsed: any): AppData {
     tasks,
     blocks: [],
     blockSettings,
+    settings: DEFAULT_SETTINGS,
   };
 }
 
@@ -437,6 +453,8 @@ interface AppContextType {
   addBlockTypeConfig: (config: Omit<BlockTypeConfig, "id">) => void;
   updateBlockTypeConfig: (config: BlockTypeConfig) => void;
   deleteBlockTypeConfig: (id: string) => void;
+  // Settings
+  updateSettings: (patch: Partial<AppSettings>) => void;
   // Import/Export
   exportData: () => string;
   importData: (json: string) => boolean;
@@ -772,6 +790,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }));
   }, []);
 
+  // === Settings ===
+  const updateSettings = useCallback((patch: Partial<AppSettings>) => {
+    setData((prev) => ({ ...prev, settings: { ...(prev.settings ?? DEFAULT_SETTINGS), ...patch } }));
+  }, []);
+
   // === Import/Export ===
   const exportData = useCallback(() => {
     const exportedData = { ...data, version: bumpMinorVersion(data.version) };
@@ -835,6 +858,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         addBlockTypeConfig,
         updateBlockTypeConfig,
         deleteBlockTypeConfig,
+        updateSettings,
         exportData,
         importData,
         clearAllData,

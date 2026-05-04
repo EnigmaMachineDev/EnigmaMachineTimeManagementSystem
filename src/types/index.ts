@@ -38,6 +38,7 @@ export type RepeatInterval = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'bimo
 export interface Subtask {
   id: string;
   name: string;
+  description?: string;
   statusId: string;
   flagIds?: string[];
 }
@@ -86,6 +87,11 @@ export interface TaskBlock {
   slots: (BlockTaskSlot | null)[];
 }
 
+// ===== Settings =====
+export interface AppSettings {
+  showOverdueIndicator: boolean;
+}
+
 // ===== App State =====
 export interface AppData {
   version: string;
@@ -95,4 +101,5 @@ export interface AppData {
   tasks: Task[];
   blocks: TaskBlock[];
   blockSettings: BlockSettings;
+  settings: AppSettings;
 }
